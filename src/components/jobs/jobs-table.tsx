@@ -91,13 +91,15 @@ function StateBadge({ state }: { state: JobState }) {
   );
 }
 
-type ConfirmActionType = "retryAll" | "cancelAll" | "purgeCompleted";
+type ConfirmActionType = "retryAll" | "cancelAll" | "purgeCompleted" | "purgeFailed";
 
 const ACTION_DESCRIPTIONS: Record<ConfirmActionType, string> = {
   retryAll: "This will retry all failed jobs in this queue.",
   cancelAll: "This will cancel all pending jobs in this queue.",
   purgeCompleted:
     "This will permanently delete all completed jobs from this queue.",
+  purgeFailed:
+    "This will permanently delete all failed jobs from this queue.",
 };
 
 export function JobsTable({
@@ -213,6 +215,18 @@ export function JobsTable({
     });
   };
 
+  const handlePurgeFailed = () => {
+    startTransition(async () => {
+      const result = await purgeQueue(queueName, "failed");
+      if (result.success) {
+        toast.success(`${result.deleted || 0} failed jobs purged`);
+        router.refresh();
+      } else {
+        toast.error(result.error || "Failed to purge queue");
+      }
+    });
+  };
+
   const handleConfirmAction = async () => {
     if (confirmAction.input !== "confirm") return;
 
@@ -225,6 +239,9 @@ export function JobsTable({
         break;
       case "purgeCompleted":
         await handlePurgeCompleted();
+        break;
+      case "purgeFailed":
+        await handlePurgeFailed();
         break;
     }
     setConfirmAction({ type: null, input: "" });
@@ -294,6 +311,15 @@ export function JobsTable({
             >
               <Trash2 className="mr-2 h-4 w-4" />
               Purge Completed
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() =>
+                setConfirmAction({ type: "purgeFailed", input: "" })
+              }
+              className="text-destructive"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Purge Failed
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
