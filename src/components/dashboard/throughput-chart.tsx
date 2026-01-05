@@ -13,6 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
+import { useTheme } from "next-themes";
 import type { ThroughputDataPoint } from "@/lib/db/types";
 
 interface ThroughputChartProps {
@@ -21,6 +22,9 @@ interface ThroughputChartProps {
 }
 
 export function ThroughputChart({ data, isLoading }: ThroughputChartProps) {
+  const { theme } = useTheme();
+  const tickColor = theme === "dark" ? "hsl(0, 0%, 70.8%)" : "hsl(0, 0%, 55.6%)";
+
   if (isLoading) {
     return (
       <Card>
@@ -56,11 +60,11 @@ export function ThroughputChart({ data, isLoading }: ThroughputChartProps) {
               <XAxis
                 dataKey="time"
                 className="text-xs"
-                tick={{ fill: "hsl(var(--muted-foreground))" }}
+                tick={{ fill: tickColor }}
               />
               <YAxis
                 className="text-xs"
-                tick={{ fill: "hsl(var(--muted-foreground))" }}
+                tick={{ fill: tickColor }}
               />
               <Tooltip
                 contentStyle={{

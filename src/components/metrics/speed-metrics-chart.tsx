@@ -13,6 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
+import { useTheme } from "next-themes";
 import type { SpeedMetricsOverTime } from "@/lib/db/types";
 import { formatDuration } from "@/lib/utils";
 
@@ -27,6 +28,9 @@ export function SpeedMetricsChart({
   isLoading,
   title = "Speed Metrics Over Time",
 }: SpeedMetricsChartProps) {
+  const { theme } = useTheme();
+  const tickColor = theme === "dark" ? "hsl(0, 0%, 70.8%)" : "hsl(0, 0%, 55.6%)";
+
   if (isLoading) {
     return (
       <Card>
@@ -100,11 +104,11 @@ export function SpeedMetricsChart({
               <XAxis
                 dataKey="time"
                 className="text-xs"
-                tick={{ fill: "hsl(var(--muted-foreground))" }}
+                tick={{ fill: tickColor }}
               />
               <YAxis
                 className="text-xs"
-                tick={{ fill: "hsl(var(--muted-foreground))" }}
+                tick={{ fill: tickColor }}
                 tickFormatter={(value) => formatDuration(value)}
               />
               <Tooltip content={<CustomTooltip />} />
