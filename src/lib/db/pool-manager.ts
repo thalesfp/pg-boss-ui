@@ -84,20 +84,51 @@ class PoolManager {
       );
 
       if (result.rows.length === 0) {
-        // No version found, assume latest
-        console.warn(`No version found in ${schema}.version table, defaulting to v10+ (snake_case)`);
-        return 23; // Default to v10+ (snake_case)
+        // No version found, detect column case from actual job table columns
+        console.warn(`No version found in ${schema}.version table, detecting column case from job table`);
+        return await this.detectColumnCaseFromJobTable(pool, schema);
       }
 
       const version = parseInt(result.rows[0].version, 10);
       console.log(`Detected pg-boss schema version: ${version} (${version >= 23 ? 'snake_case' : 'camelCase'})`);
       return version;
     } catch (error) {
-      // Version table doesn't exist or other error
-      console.warn(`Could not detect pg-boss schema version: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      // Default to latest version (snake_case)
-      return 23;
+      // Version table doesn't exist, try detecting from job table
+      console.warn(`Version table not found, detecting column case from job table`);
+      try {
+        return await this.detectColumnCaseFromJobTable(pool, schema);
+      } catch (detectionError) {
+        console.error(`Failed to detect column case: ${detectionError instanceof Error ? detectionError.message : 'Unknown error'}`);
+        // Last resort: default to camelCase for older pg-boss versions
+        return 22; // v9 and earlier use camelCase
+      }
     }
+  }
+
+  private async detectColumnCaseFromJobTable(pool: Pool, schema: string): Promise<number> {
+    // Query actual column names from job table
+    const result = await pool.query(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'job'
+      AND column_name IN ('created_on', 'createdOn')
+      LIMIT 1
+      `,
+      [schema]
+    );
+
+    if (result.rows.length === 0) {
+      throw new Error('Could not detect column case: job table columns not found');
+    }
+
+    const columnName = result.rows[0].column_name;
+    const isSnakeCase = columnName === 'created_on';
+
+    console.log(`Detected column case: ${isSnakeCase ? 'snake_case (v10+)' : 'camelCase (v8/v9)'}`);
+
+    // Return a version number that maps to the correct column case
+    return isSnakeCase ? 23 : 22;
   }
 
   private getColumnCase(schemaVersion: number): ColumnCase {
