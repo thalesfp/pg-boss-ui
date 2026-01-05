@@ -550,14 +550,7 @@ export async function getSchedules(
   schema: string = "pgboss"
 ): Promise<Schedule[]> {
   const result = await pool.query(`
-    SELECT
-      name,
-      cron,
-      timezone,
-      data,
-      options,
-      ${mapper.col('created_on')} as created_on,
-      ${mapper.col('updated_on')} as updated_on
+    SELECT *
     FROM ${schema}.schedule
     ORDER BY name
   `);
@@ -568,8 +561,10 @@ export async function getSchedules(
     timezone: row.timezone,
     data: row.data,
     options: row.options,
-    createdOn: new Date(row.created_on),
-    updatedOn: row.updated_on ? new Date(row.updated_on) : null,
+    createdOn: new Date(mapper.getFromRow(row, 'created_on') as string),
+    updatedOn: mapper.getFromRow(row, 'updated_on')
+      ? new Date(mapper.getFromRow(row, 'updated_on') as string)
+      : null,
   }));
 }
 
