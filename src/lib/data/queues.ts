@@ -11,7 +11,8 @@ import type { QueueStats } from "@/lib/db/types";
 const getCachedQueuesWithStats = unstable_cache(
   async (connectionString: string, schema: string, allowSelfSignedCert?: boolean, caCertificate?: string): Promise<QueueWithStats[]> => {
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    return getQueuesWithStats(pool, schema);
+    const { capabilities } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    return getQueuesWithStats(pool, schema, capabilities);
   },
   ["queues-with-stats"],
   {
@@ -49,7 +50,7 @@ const getCachedQueueStats = unstable_cache(
     caCertificate?: string
   ): Promise<QueueStats | null> => {
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
     const stats = await getQueueStats(pool, mapper, schema);
     return stats.find((s) => s.name === queueName) || null;
   },

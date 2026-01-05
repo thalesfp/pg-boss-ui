@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const endDate = isAllTime ? undefined : validateDate(searchParams.get("endDate"));
 
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
     const dateOptions = { startDate, endDate };
     const [stats, throughput] = await Promise.all([
       getDashboardStats(pool, mapper, schema, dateOptions),

@@ -35,7 +35,7 @@ const getCachedJobs = unstable_cache(
     caCertificate?: string
   ): Promise<JobsData> => {
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
     return getJobs(pool, mapper, schema, options);
   },
   ["jobs"],
@@ -74,7 +74,7 @@ const getCachedJob = unstable_cache(
     caCertificate?: string
   ): Promise<Job | null> => {
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
     return getJob(pool, mapper, jobId, schema);
   },
   ["job-detail"],

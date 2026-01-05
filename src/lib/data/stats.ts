@@ -23,7 +23,7 @@ const getCachedDashboardStats = unstable_cache(
     caCertificate?: string
   ): Promise<DashboardData> => {
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
 
     const dateOptions = {
       startDate: startDate ? new Date(startDate) : undefined,

@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     const sortOrder = validateSortOrder(searchParams.get("sortOrder") || undefined);
 
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
 
     // If jobId is provided, return single job
     if (jobIdParam) {

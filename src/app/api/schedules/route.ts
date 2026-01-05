@@ -14,8 +14,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
-    const schedules = await getSchedules(pool, mapper, schema);
+    const { mapper, capabilities } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const schedules = await getSchedules(pool, mapper, schema, capabilities);
 
     return NextResponse.json(schedules);
   } catch (error) {

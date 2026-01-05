@@ -32,7 +32,7 @@ const getCachedSpeedMetrics = unstable_cache(
     caCertificate?: string
   ): Promise<MetricsData> => {
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
 
     const dateOptions = {
       queueName,

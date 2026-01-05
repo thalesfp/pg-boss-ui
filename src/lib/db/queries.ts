@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import type { ColumnMapper } from "./column-mapper";
+import type { SchemaCapabilities } from "./pool-manager";
 import type {
   Job,
   Queue,
@@ -202,12 +203,35 @@ export async function getThroughput(
 
 export async function getQueues(
   pool: Pool,
-  schema: string = "pgboss"
+  schema: string = "pgboss",
+  capabilities?: SchemaCapabilities
 ): Promise<Queue[]> {
-  // Query only essential columns that exist in all pg-boss versions
+  // For v10+: use dedicated queue table
+  if (capabilities?.hasQueueTable) {
+    const result = await pool.query(`
+      SELECT name
+      FROM ${schema}.queue
+      ORDER BY name
+    `);
+
+    return result.rows.map((row) => ({
+      name: row.name,
+      policy: null,
+      retryLimit: null,
+      retryDelay: null,
+      retryBackoff: null,
+      expireIn: null,
+      retentionDays: null,
+      deadLetter: null,
+      createdOn: new Date(),
+      updatedOn: null,
+    }));
+  }
+
+  // For v8/v9: derive queues from job table
   const result = await pool.query(`
-    SELECT name
-    FROM ${schema}.queue
+    SELECT DISTINCT name
+    FROM ${schema}.job
     ORDER BY name
   `);
 
@@ -231,28 +255,114 @@ export interface QueueWithStats extends Queue {
 
 export async function getQueuesWithStats(
   pool: Pool,
-  schema: string = "pgboss"
+  schema: string = "pgboss",
+  capabilities?: SchemaCapabilities
 ): Promise<QueueWithStats[]> {
-  // Combined query that fetches queue metadata with job statistics
-  // Uses LEFT JOIN to include queues even if they have no jobs
+  // For v10+: use dedicated queue table with JOINs
+  if (capabilities?.hasQueueTable) {
+    // Combined query that fetches queue metadata with job statistics
+    // Uses LEFT JOIN to include queues even if they have no jobs
+    const result = await pool.query(
+      `
+      SELECT
+        q.name,
+        COUNT(j.id) FILTER (WHERE j.state::text = 'created') as created,
+        COUNT(j.id) FILTER (WHERE j.state::text = 'retry') as retry,
+        COUNT(j.id) FILTER (WHERE j.state::text = 'active') as active,
+        COUNT(j.id) FILTER (WHERE j.state::text = 'completed') as completed,
+        COUNT(j.id) FILTER (WHERE j.state::text = 'cancelled') as cancelled,
+        COUNT(j.id) FILTER (WHERE j.state::text = 'failed') as failed
+      FROM ${schema}.queue q
+      LEFT JOIN ${schema}.job j ON q.name = j.name
+      GROUP BY q.name
+      ORDER BY q.name
+    `
+    );
+
+    const queuesWithStats: QueueWithStats[] = result.rows.map((row) => ({
+      name: row.name,
+      policy: null,
+      retryLimit: null,
+      retryDelay: null,
+      retryBackoff: null,
+      expireIn: null,
+      retentionDays: null,
+      deadLetter: null,
+      createdOn: new Date(),
+      updatedOn: null,
+      stats: {
+        name: row.name,
+        created: parseInt(row.created, 10),
+        retry: parseInt(row.retry, 10),
+        active: parseInt(row.active, 10),
+        completed: parseInt(row.completed, 10),
+        cancelled: parseInt(row.cancelled, 10),
+        failed: parseInt(row.failed, 10),
+      },
+    }));
+
+    // Also get queues that exist in jobs but not in queue table (orphaned queues)
+    const orphanedStatsResult = await pool.query(
+      `
+      SELECT
+        j.name,
+        COUNT(*) FILTER (WHERE j.state::text = 'created') as created,
+        COUNT(*) FILTER (WHERE j.state::text = 'retry') as retry,
+        COUNT(*) FILTER (WHERE j.state::text = 'active') as active,
+        COUNT(*) FILTER (WHERE j.state::text = 'completed') as completed,
+        COUNT(*) FILTER (WHERE j.state::text = 'cancelled') as cancelled,
+        COUNT(*) FILTER (WHERE j.state::text = 'failed') as failed
+      FROM ${schema}.job j
+      LEFT JOIN ${schema}.queue q ON j.name = q.name
+      WHERE q.name IS NULL
+      GROUP BY j.name
+      ORDER BY j.name
+    `
+    );
+
+    const orphanedQueues: QueueWithStats[] = orphanedStatsResult.rows.map((row) => ({
+      name: row.name,
+      policy: null,
+      retryLimit: null,
+      retryDelay: null,
+      retryBackoff: null,
+      expireIn: null,
+      retentionDays: null,
+      deadLetter: null,
+      createdOn: new Date(),
+      updatedOn: null,
+      stats: {
+        name: row.name,
+        created: parseInt(row.created, 10),
+        retry: parseInt(row.retry, 10),
+        active: parseInt(row.active, 10),
+        completed: parseInt(row.completed, 10),
+        cancelled: parseInt(row.cancelled, 10),
+        failed: parseInt(row.failed, 10),
+      },
+    }));
+
+    return [...queuesWithStats, ...orphanedQueues];
+  }
+
+  // For v8/v9: derive everything from job table
   const result = await pool.query(
     `
     SELECT
-      q.name,
-      COUNT(j.id) FILTER (WHERE j.state::text = 'created') as created,
-      COUNT(j.id) FILTER (WHERE j.state::text = 'retry') as retry,
-      COUNT(j.id) FILTER (WHERE j.state::text = 'active') as active,
-      COUNT(j.id) FILTER (WHERE j.state::text = 'completed') as completed,
-      COUNT(j.id) FILTER (WHERE j.state::text = 'cancelled') as cancelled,
-      COUNT(j.id) FILTER (WHERE j.state::text = 'failed') as failed
-    FROM ${schema}.queue q
-    LEFT JOIN ${schema}.job j ON q.name = j.name
-    GROUP BY q.name
-    ORDER BY q.name
+      name,
+      COUNT(*) FILTER (WHERE state::text = 'created') as created,
+      COUNT(*) FILTER (WHERE state::text = 'retry') as retry,
+      COUNT(*) FILTER (WHERE state::text = 'active') as active,
+      COUNT(*) FILTER (WHERE state::text = 'completed') as completed,
+      COUNT(*) FILTER (WHERE state::text = 'cancelled') as cancelled,
+      COUNT(*) FILTER (WHERE state::text = 'failed') as failed
+    FROM ${schema}.job
+    GROUP BY name
+    ORDER BY name
   `
   );
 
-  const queuesWithStats: QueueWithStats[] = result.rows.map((row) => ({
+  return result.rows.map((row) => ({
     name: row.name,
     policy: null,
     retryLimit: null,
@@ -273,49 +383,6 @@ export async function getQueuesWithStats(
       failed: parseInt(row.failed, 10),
     },
   }));
-
-  // Also get queues that exist in jobs but not in queue table (orphaned queues)
-  const orphanedStatsResult = await pool.query(
-    `
-    SELECT
-      j.name,
-      COUNT(*) FILTER (WHERE j.state::text = 'created') as created,
-      COUNT(*) FILTER (WHERE j.state::text = 'retry') as retry,
-      COUNT(*) FILTER (WHERE j.state::text = 'active') as active,
-      COUNT(*) FILTER (WHERE j.state::text = 'completed') as completed,
-      COUNT(*) FILTER (WHERE j.state::text = 'cancelled') as cancelled,
-      COUNT(*) FILTER (WHERE j.state::text = 'failed') as failed
-    FROM ${schema}.job j
-    LEFT JOIN ${schema}.queue q ON j.name = q.name
-    WHERE q.name IS NULL
-    GROUP BY j.name
-    ORDER BY j.name
-  `
-  );
-
-  const orphanedQueues: QueueWithStats[] = orphanedStatsResult.rows.map((row) => ({
-    name: row.name,
-    policy: null,
-    retryLimit: null,
-    retryDelay: null,
-    retryBackoff: null,
-    expireIn: null,
-    retentionDays: null,
-    deadLetter: null,
-    createdOn: new Date(),
-    updatedOn: null,
-    stats: {
-      name: row.name,
-      created: parseInt(row.created, 10),
-      retry: parseInt(row.retry, 10),
-      active: parseInt(row.active, 10),
-      completed: parseInt(row.completed, 10),
-      cancelled: parseInt(row.cancelled, 10),
-      failed: parseInt(row.failed, 10),
-    },
-  }));
-
-  return [...queuesWithStats, ...orphanedQueues];
 }
 
 export async function getJobs(
@@ -547,8 +614,14 @@ export async function purgeQueue(
 export async function getSchedules(
   pool: Pool,
   mapper: ColumnMapper,
-  schema: string = "pgboss"
+  schema: string = "pgboss",
+  capabilities?: SchemaCapabilities
 ): Promise<Schedule[]> {
+  // If schedule table doesn't exist, return empty array
+  if (capabilities && !capabilities.hasScheduleTable) {
+    return [];
+  }
+
   const result = await pool.query(`
     SELECT *
     FROM ${schema}.schedule

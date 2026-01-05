@@ -14,9 +14,9 @@ export async function GET(request: NextRequest) {
 
   try {
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const { mapper, capabilities } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
     const [queues, stats] = await Promise.all([
-      getQueues(pool, schema),
+      getQueues(pool, schema, capabilities),
       getQueueStats(pool, mapper, schema),
     ]);
 

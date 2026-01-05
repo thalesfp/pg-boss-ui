@@ -7,10 +7,16 @@ interface SslOptions {
   caCertificate?: string;
 }
 
+export interface SchemaCapabilities {
+  hasQueueTable: boolean;
+  hasScheduleTable: boolean;
+}
+
 interface PoolMetadata {
   pool: Pool;
   schemaVersion: number | null;
   columnCase: ColumnCase;
+  capabilities: SchemaCapabilities | null;
 }
 
 class PoolManager {
@@ -62,6 +68,7 @@ class PoolManager {
         pool,
         schemaVersion: null,
         columnCase: 'snake_case', // Default, will be detected on first use
+        capabilities: null,
       };
 
       this.pools.set(poolKey, metadata);
@@ -97,12 +104,60 @@ class PoolManager {
     return schemaVersion >= 23 ? 'snake_case' : 'camelCase';
   }
 
+  private async detectSchemaCapabilities(pool: Pool, schema: string): Promise<SchemaCapabilities> {
+    try {
+      // Check for queue table
+      const queueCheck = await pool.query(
+        `
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_schema = $1
+          AND table_name = 'queue'
+        ) as exists
+        `,
+        [schema]
+      );
+
+      // Check for schedule table
+      const scheduleCheck = await pool.query(
+        `
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_schema = $1
+          AND table_name = 'schedule'
+        ) as exists
+        `,
+        [schema]
+      );
+
+      const capabilities = {
+        hasQueueTable: queueCheck.rows[0].exists,
+        hasScheduleTable: scheduleCheck.rows[0].exists,
+      };
+
+      console.log(
+        `Detected pg-boss schema capabilities: queue table=${capabilities.hasQueueTable}, schedule table=${capabilities.hasScheduleTable}`
+      );
+
+      return capabilities;
+    } catch (error) {
+      console.warn(
+        `Failed to detect schema capabilities: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+      // Default to v10+ capabilities
+      return {
+        hasQueueTable: true,
+        hasScheduleTable: true,
+      };
+    }
+  }
+
   async getMapper(
     connectionString: string,
     schema: string,
     allowSelfSignedCert?: boolean,
     caCertificate?: string
-  ): Promise<ColumnMapper> {
+  ): Promise<{ mapper: ColumnMapper; capabilities: SchemaCapabilities }> {
     const sslOptions: SslOptions = { allowSelfSignedCert, caCertificate };
     const poolKey = this.getPoolKey(connectionString, sslOptions);
 
@@ -110,13 +165,22 @@ class PoolManager {
     const pool = this.getPool(connectionString, allowSelfSignedCert, caCertificate);
     const metadata = this.pools.get(poolKey)!;
 
-    // Detect version if not already cached
-    if (metadata.schemaVersion === null) {
-      metadata.schemaVersion = await this.detectSchemaVersion(pool, schema);
-      metadata.columnCase = this.getColumnCase(metadata.schemaVersion);
+    // Detect version and capabilities if not already cached
+    if (metadata.schemaVersion === null || metadata.capabilities === null) {
+      const [schemaVersion, capabilities] = await Promise.all([
+        this.detectSchemaVersion(pool, schema),
+        this.detectSchemaCapabilities(pool, schema),
+      ]);
+
+      metadata.schemaVersion = schemaVersion;
+      metadata.columnCase = this.getColumnCase(schemaVersion);
+      metadata.capabilities = capabilities;
     }
 
-    return new ColumnMapper(metadata.columnCase);
+    return {
+      mapper: new ColumnMapper(metadata.columnCase),
+      capabilities: metadata.capabilities,
+    };
   }
 
   async testConnection(
