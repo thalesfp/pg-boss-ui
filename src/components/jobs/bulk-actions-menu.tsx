@@ -60,6 +60,18 @@ export function BulkActionsMenu({ queueName }: BulkActionsMenuProps) {
     });
   };
 
+  const handlePurgeFailed = async () => {
+    startTransition(async () => {
+      const result = await purgeQueue(queueName, "failed");
+      if (result.success) {
+        toast.success(`${result.deleted || 0} failed jobs deleted`);
+        router.refresh();
+      } else {
+        toast.error(result.error || "Failed to purge queue");
+      }
+    });
+  };
+
   const handleConfirm = async () => {
     switch (confirmAction) {
       case "retryAll":
@@ -70,6 +82,9 @@ export function BulkActionsMenu({ queueName }: BulkActionsMenuProps) {
         break;
       case "purgeCompleted":
         await handlePurgeCompleted();
+        break;
+      case "purgeFailed":
+        await handlePurgeFailed();
         break;
     }
   };
@@ -97,6 +112,13 @@ export function BulkActionsMenu({ queueName }: BulkActionsMenuProps) {
           >
             <Trash2 className="mr-2 h-4 w-4" />
             Purge Completed
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setConfirmAction("purgeFailed")}
+            className="text-destructive"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Purge Failed
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

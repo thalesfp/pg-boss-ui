@@ -13,13 +13,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
 
-export type ConfirmActionType = "retryAll" | "cancelAll" | "purgeCompleted";
+export type ConfirmActionType = "retryAll" | "cancelAll" | "purgeCompleted" | "purgeFailed";
 
 const ACTION_DESCRIPTIONS: Record<ConfirmActionType, string> = {
   retryAll: "This will retry all failed jobs in this queue.",
   cancelAll: "This will cancel all pending jobs in this queue.",
   purgeCompleted:
     "This will permanently delete all completed jobs from this queue.",
+  purgeFailed:
+    "This will permanently delete all failed jobs from this queue.",
 };
 
 interface ConfirmDialogProps {
