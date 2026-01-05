@@ -30,9 +30,11 @@ const getCachedJobs = unstable_cache(
   async (
     connectionString: string,
     schema: string,
-    options: GetJobsOptions
+    options: GetJobsOptions,
+    allowSelfSignedCert?: boolean,
+    caCertificate?: string
   ): Promise<JobsData> => {
-    const pool = poolManager.getPool(connectionString);
+    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
     return getJobs(pool, schema, options);
   },
   ["jobs"],
@@ -55,7 +57,7 @@ export async function getJobsData(options: GetJobsOptions = {}): Promise<JobsDat
     throw new Error("No active connection");
   }
 
-  return getCachedJobs(session.connectionString, session.schema, options);
+  return getCachedJobs(session.connectionString, session.schema, options, session.allowSelfSignedCert, session.caCertificate);
 }
 
 /**
@@ -66,9 +68,11 @@ const getCachedJob = unstable_cache(
   async (
     connectionString: string,
     schema: string,
-    jobId: string
+    jobId: string,
+    allowSelfSignedCert?: boolean,
+    caCertificate?: string
   ): Promise<Job | null> => {
-    const pool = poolManager.getPool(connectionString);
+    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
     return getJob(pool, jobId, schema);
   },
   ["job-detail"],
@@ -91,5 +95,5 @@ export async function getJobData(jobId: string): Promise<Job | null> {
     throw new Error("No active connection");
   }
 
-  return getCachedJob(session.connectionString, session.schema, jobId);
+  return getCachedJob(session.connectionString, session.schema, jobId, session.allowSelfSignedCert, session.caCertificate);
 }

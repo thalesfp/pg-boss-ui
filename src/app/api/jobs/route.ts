@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
-  const { connectionString, schema } = result.session;
+  const { connectionString, schema, allowSelfSignedCert, caCertificate } = result.session;
 
   try {
     const queueNameParam = searchParams.get("queueName");
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     const sortBy = validateSortBy(searchParams.get("sortBy") || undefined);
     const sortOrder = validateSortOrder(searchParams.get("sortOrder") || undefined);
 
-    const pool = poolManager.getPool(connectionString);
+    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
 
     // If jobId is provided, return single job
     if (jobIdParam) {

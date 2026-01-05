@@ -6,6 +6,16 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Form,
   FormControl,
@@ -29,15 +39,32 @@ import { toast } from "sonner";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  connectionString: z
-    .string()
-    .min(1, "Connection string is required")
-    .refine(
-      (val) => val.startsWith("postgresql://") || val.startsWith("postgres://"),
-      "Must be a valid PostgreSQL connection string"
-    ),
+  // Connection string mode
+  connectionString: z.string().optional(),
+  // Individual fields mode
+  host: z.string().optional(),
+  port: z.string().optional(),
+  database: z.string().optional(),
+  user: z.string().optional(),
+  password: z.string().optional(),
+  sslMode: z.enum(["disable", "require", "prefer", "verify-ca", "verify-full"]).optional(),
+  // SSL options
+  allowSelfSignedCert: z.boolean().optional(),
+  caCertificate: z.string().optional(),
+  // Shared
   schema: z.string().min(1, "Schema is required"),
 });
+
+function buildConnectionString(
+  host: string,
+  port: string,
+  database: string,
+  user: string,
+  password: string
+): string {
+  const encodedPassword = encodeURIComponent(password);
+  return `postgresql://${user}:${encodedPassword}@${host}:${port}/${database}`;
+}
 
 type FormValues = z.infer<typeof formSchema>;
 
@@ -53,6 +80,7 @@ export function DatabaseForm({ connection, onSuccess }: DatabaseFormProps) {
     success: boolean;
     error?: string;
   } | null>(null);
+  const [mode, setMode] = useState<"connectionString" | "fields">("connectionString");
 
   const { addConnection, updateConnection } = useDatabaseStore();
 
@@ -61,15 +89,60 @@ export function DatabaseForm({ connection, onSuccess }: DatabaseFormProps) {
     defaultValues: {
       name: connection?.name || "",
       connectionString: connection?.connectionString || "",
+      host: "",
+      port: "5432",
+      database: "",
+      user: "",
+      password: "",
+      sslMode: "prefer",
+      allowSelfSignedCert: connection?.allowSelfSignedCert || false,
+      caCertificate: connection?.caCertificate || "",
       schema: connection?.schema || "pgboss",
     },
   });
 
+  const getConnectionString = (): string | null => {
+    if (mode === "connectionString") {
+      const connStr = form.getValues("connectionString");
+      if (!connStr) {
+        form.setError("connectionString", { message: "Connection string is required" });
+        return null;
+      }
+      if (!connStr.startsWith("postgresql://") && !connStr.startsWith("postgres://")) {
+        form.setError("connectionString", { message: "Must be a valid PostgreSQL connection string" });
+        return null;
+      }
+      return connStr;
+    } else {
+      const host = form.getValues("host");
+      const port = form.getValues("port") || "5432";
+      const database = form.getValues("database");
+      const user = form.getValues("user");
+      const password = form.getValues("password") || "";
+
+      if (!host) {
+        form.setError("host", { message: "Host is required" });
+        return null;
+      }
+      if (!database) {
+        form.setError("database", { message: "Database is required" });
+        return null;
+      }
+      if (!user) {
+        form.setError("user", { message: "User is required" });
+        return null;
+      }
+
+      return buildConnectionString(host, port, database, user, password);
+    }
+  };
+
   const testConnection = async () => {
-    const connectionString = form.getValues("connectionString");
+    const connectionString = getConnectionString();
     const schema = form.getValues("schema") || "pgboss";
+    const allowSelfSignedCert = form.getValues("allowSelfSignedCert") || false;
+    const caCertificate = form.getValues("caCertificate") || undefined;
     if (!connectionString) {
-      form.setError("connectionString", { message: "Connection string is required" });
       return;
     }
 
@@ -80,7 +153,7 @@ export function DatabaseForm({ connection, onSuccess }: DatabaseFormProps) {
       const res = await fetch("/api/databases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectionString, schema }),
+        body: JSON.stringify({ connectionString, schema, allowSelfSignedCert, caCertificate }),
       });
 
       const result = await res.json();
@@ -100,12 +173,25 @@ export function DatabaseForm({ connection, onSuccess }: DatabaseFormProps) {
   };
 
   const onSubmit = async (values: FormValues) => {
+    const connectionString = getConnectionString();
+    if (!connectionString) {
+      return;
+    }
+
+    const connectionData = {
+      name: values.name,
+      connectionString,
+      schema: values.schema,
+      allowSelfSignedCert: values.allowSelfSignedCert,
+      caCertificate: values.caCertificate,
+    };
+
     try {
       if (connection) {
-        await updateConnection(connection.id, values);
+        await updateConnection(connection.id, connectionData);
         toast.success("Connection updated");
       } else {
-        await addConnection(values);
+        await addConnection(connectionData);
         toast.success("Connection added");
       }
 
@@ -156,21 +242,170 @@ export function DatabaseForm({ connection, onSuccess }: DatabaseFormProps) {
               )}
             />
 
+            <Tabs value={mode} onValueChange={(v) => setMode(v as "connectionString" | "fields")}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="connectionString">Connection String</TabsTrigger>
+                <TabsTrigger value="fields">Individual Fields</TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            {mode === "connectionString" ? (
+              <FormField
+                control={form.control}
+                name="connectionString"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Connection String</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="text"
+                        placeholder="postgresql://user:pass@localhost:5432/db"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      PostgreSQL connection string
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="host"
+                    render={({ field }) => (
+                      <FormItem className="col-span-2">
+                        <FormLabel>Host</FormLabel>
+                        <FormControl>
+                          <Input placeholder="localhost" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="port"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Port</FormLabel>
+                        <FormControl>
+                          <Input placeholder="5432" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="database"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Database</FormLabel>
+                      <FormControl>
+                        <Input placeholder="mydb" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="user"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>User</FormLabel>
+                      <FormControl>
+                        <Input placeholder="postgres" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="••••••••" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="sslMode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>SSL Mode</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select SSL mode" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="disable">Disable</SelectItem>
+                          <SelectItem value="prefer">Prefer</SelectItem>
+                          <SelectItem value="require">Require</SelectItem>
+                          <SelectItem value="verify-ca">Verify CA</SelectItem>
+                          <SelectItem value="verify-full">Verify Full</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
+
             <FormField
               control={form.control}
-              name="connectionString"
+              name="allowSelfSignedCert"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel>Allow self-signed certificates</FormLabel>
+                    <FormDescription>
+                      Trust connections with self-signed SSL certificates
+                    </FormDescription>
+                  </div>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="caCertificate"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Connection String</FormLabel>
+                  <FormLabel>CA Certificate (optional)</FormLabel>
                   <FormControl>
-                    <Input
-                      type="text"
-                      placeholder="postgresql://user:pass@localhost:5432/db"
+                    <Textarea
+                      placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
+                      className="font-mono text-xs h-24"
                       {...field}
                     />
                   </FormControl>
                   <FormDescription>
-                    PostgreSQL connection string
+                    Paste your CA certificate in PEM format for SSL verification
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

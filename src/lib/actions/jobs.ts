@@ -31,7 +31,7 @@ export async function retryJob(jobId: string): Promise<ActionResult> {
     }
 
     const validatedJobId = validateJobId(jobId);
-    const pool = poolManager.getPool(session.connectionString);
+    const pool = poolManager.getPool(session.connectionString, session.allowSelfSignedCert, session.caCertificate);
 
     const newJobId = await dbRetryJob(pool, validatedJobId, session.schema);
 
@@ -62,7 +62,7 @@ export async function cancelJob(jobId: string): Promise<ActionResult> {
     }
 
     const validatedJobId = validateJobId(jobId);
-    const pool = poolManager.getPool(session.connectionString);
+    const pool = poolManager.getPool(session.connectionString, session.allowSelfSignedCert, session.caCertificate);
 
     const result = await dbCancelJob(pool, validatedJobId, session.schema);
 
@@ -97,7 +97,7 @@ export async function retryAllJobs(queueName: string): Promise<ActionResult> {
     }
 
     const validatedQueueName = validateQueueName(queueName);
-    const pool = poolManager.getPool(session.connectionString);
+    const pool = poolManager.getPool(session.connectionString, session.allowSelfSignedCert, session.caCertificate);
 
     const count = await dbRetryAllJobs(pool, validatedQueueName, session.schema);
 
@@ -129,7 +129,7 @@ export async function cancelAllJobs(queueName: string): Promise<ActionResult> {
     }
 
     const validatedQueueName = validateQueueName(queueName);
-    const pool = poolManager.getPool(session.connectionString);
+    const pool = poolManager.getPool(session.connectionString, session.allowSelfSignedCert, session.caCertificate);
 
     const count = await dbCancelAllJobs(pool, validatedQueueName, session.schema);
 

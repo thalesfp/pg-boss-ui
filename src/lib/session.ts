@@ -11,6 +11,8 @@ export interface SessionData {
   connectionId: string;
   connectionString: string;
   schema: string;
+  allowSelfSignedCert?: boolean;
+  caCertificate?: string;
 }
 
 const ALGORITHM = "aes-256-gcm";

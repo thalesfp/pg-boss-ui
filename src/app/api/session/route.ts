@@ -9,10 +9,12 @@ export async function POST(request: NextRequest) {
     const oldSession = await getSession();
 
     const body = await request.json();
-    const { connectionId, connectionString, schema = "pgboss" } = body as {
+    const { connectionId, connectionString, schema = "pgboss", allowSelfSignedCert, caCertificate } = body as {
       connectionId: string;
       connectionString: string;
       schema?: string;
+      allowSelfSignedCert?: boolean;
+      caCertificate?: string;
     };
 
     if (!connectionId || !connectionString) {
@@ -29,6 +31,8 @@ export async function POST(request: NextRequest) {
       connectionId,
       connectionString,
       schema: validatedSchema,
+      allowSelfSignedCert,
+      caCertificate,
     });
 
     // Close old pool if switching to a different connection

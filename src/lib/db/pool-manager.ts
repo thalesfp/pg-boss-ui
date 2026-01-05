@@ -1,10 +1,40 @@
 import { Pool, PoolConfig } from "pg";
+import { createHash } from "crypto";
+
+interface SslOptions {
+  allowSelfSignedCert?: boolean;
+  caCertificate?: string;
+}
 
 class PoolManager {
   private pools: Map<string, Pool> = new Map();
 
-  getPool(connectionString: string): Pool {
-    let pool = this.pools.get(connectionString);
+  private getPoolKey(connectionString: string, sslOptions?: SslOptions): string {
+    const sslKey = sslOptions?.caCertificate
+      ? `ca:${createHash("sha256").update(sslOptions.caCertificate).digest("hex").slice(0, 8)}`
+      : sslOptions?.allowSelfSignedCert
+        ? "selfsigned"
+        : "default";
+    return `${connectionString}:ssl=${sslKey}`;
+  }
+
+  private getSslConfig(sslOptions?: SslOptions): PoolConfig["ssl"] {
+    if (sslOptions?.caCertificate) {
+      // Use provided CA certificate for verification
+      return { ca: sslOptions.caCertificate };
+    }
+    if (sslOptions?.allowSelfSignedCert) {
+      // Disable certificate verification entirely
+      return { rejectUnauthorized: false, checkServerIdentity: () => undefined };
+    }
+    // Use default SSL behavior
+    return undefined;
+  }
+
+  getPool(connectionString: string, allowSelfSignedCert?: boolean, caCertificate?: string): Pool {
+    const sslOptions: SslOptions = { allowSelfSignedCert, caCertificate };
+    const poolKey = this.getPoolKey(connectionString, sslOptions);
+    let pool = this.pools.get(poolKey);
 
     if (!pool) {
       const config: PoolConfig = {
@@ -12,6 +42,7 @@ class PoolManager {
         max: 5,
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 5000,
+        ssl: this.getSslConfig(sslOptions),
       };
 
       pool = new Pool(config);
@@ -20,17 +51,24 @@ class PoolManager {
         console.error("Unexpected pool error:", err);
       });
 
-      this.pools.set(connectionString, pool);
+      this.pools.set(poolKey, pool);
     }
 
     return pool;
   }
 
-  async testConnection(connectionString: string, schema: string = "pgboss"): Promise<{ success: boolean; error?: string }> {
+  async testConnection(
+    connectionString: string,
+    schema: string = "pgboss",
+    allowSelfSignedCert?: boolean,
+    caCertificate?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const sslOptions: SslOptions = { allowSelfSignedCert, caCertificate };
     const pool = new Pool({
       connectionString,
       max: 1,
       connectionTimeoutMillis: 5000,
+      ssl: this.getSslConfig(sslOptions),
     });
 
     try {
@@ -62,11 +100,13 @@ class PoolManager {
     }
   }
 
-  async closePool(connectionString: string): Promise<void> {
-    const pool = this.pools.get(connectionString);
+  async closePool(connectionString: string, allowSelfSignedCert?: boolean, caCertificate?: string): Promise<void> {
+    const sslOptions: SslOptions = { allowSelfSignedCert, caCertificate };
+    const poolKey = this.getPoolKey(connectionString, sslOptions);
+    const pool = this.pools.get(poolKey);
     if (pool) {
       await pool.end();
-      this.pools.delete(connectionString);
+      this.pools.delete(poolKey);
     }
   }
 

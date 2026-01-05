@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
       headers: { "Content-Type": "application/json" }
     });
   }
-  const { connectionString, schema } = result.session;
+  const { connectionString, schema, allowSelfSignedCert, caCertificate } = result.session;
   const DEFAULT_INTERVAL = 2000;
   const MIN_INTERVAL = 1000;
   const rawInterval = parseInt(searchParams.get("interval") || String(DEFAULT_INTERVAL), 10);
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      const pool = poolManager.getPool(connectionString);
+      const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
 
       const sendUpdate = async () => {
         try {

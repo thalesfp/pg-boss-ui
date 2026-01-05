@@ -27,9 +27,11 @@ const getCachedSpeedMetrics = unstable_cache(
     queueName?: string,
     startDate?: string,
     endDate?: string,
-    granularity?: "minute" | "hour" | "day"
+    granularity?: "minute" | "hour" | "day",
+    allowSelfSignedCert?: boolean,
+    caCertificate?: string
   ): Promise<MetricsData> => {
-    const pool = poolManager.getPool(connectionString);
+    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
 
     const dateOptions = {
       queueName,
@@ -73,6 +75,8 @@ export async function getMetricsData(options: GetMetricsOptions = {}): Promise<M
     queueName,
     startDate?.toISOString(),
     endDate?.toISOString(),
-    granularity
+    granularity,
+    session.allowSelfSignedCert,
+    session.caCertificate
   );
 }

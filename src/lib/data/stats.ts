@@ -18,9 +18,11 @@ const getCachedDashboardStats = unstable_cache(
     connectionString: string,
     schema: string,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    allowSelfSignedCert?: boolean,
+    caCertificate?: string
   ): Promise<DashboardData> => {
-    const pool = poolManager.getPool(connectionString);
+    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
 
     const dateOptions = {
       startDate: startDate ? new Date(startDate) : undefined,
@@ -62,6 +64,8 @@ export async function getDashboardData(
     session.connectionString,
     session.schema,
     startDate?.toISOString(),
-    endDate?.toISOString()
+    endDate?.toISOString(),
+    session.allowSelfSignedCert,
+    session.caCertificate
   );
 }

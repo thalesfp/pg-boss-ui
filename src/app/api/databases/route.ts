@@ -4,9 +4,11 @@ import { poolManager } from "@/lib/db/pool-manager";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { connectionString, schema = "pgboss" } = body as {
+    const { connectionString, schema = "pgboss", allowSelfSignedCert, caCertificate } = body as {
       connectionString: string;
       schema?: string;
+      allowSelfSignedCert?: boolean;
+      caCertificate?: string;
     };
 
     if (!connectionString) {
@@ -16,7 +18,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await poolManager.testConnection(connectionString, schema);
+    const result = await poolManager.testConnection(connectionString, schema, allowSelfSignedCert, caCertificate);
 
     return NextResponse.json(result);
   } catch (error) {

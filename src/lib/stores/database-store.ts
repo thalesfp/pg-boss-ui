@@ -13,6 +13,8 @@ export interface DatabaseConnection {
   name: string;
   connectionString: string;
   schema: string;
+  allowSelfSignedCert?: boolean;
+  caCertificate?: string;
 }
 
 interface DatabaseStore {
@@ -35,6 +37,8 @@ async function updateSession(connection: DatabaseConnection | null): Promise<voi
         connectionId: connection.id,
         connectionString: connection.connectionString,
         schema: connection.schema,
+        allowSelfSignedCert: connection.allowSelfSignedCert,
+        caCertificate: connection.caCertificate,
       }),
     });
     if (!res.ok) {
