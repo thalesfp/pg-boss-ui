@@ -1,13 +1,20 @@
 import { Pool, PoolConfig } from "pg";
 import { createHash } from "crypto";
+import { ColumnMapper, type ColumnCase } from "./column-mapper";
 
 interface SslOptions {
   allowSelfSignedCert?: boolean;
   caCertificate?: string;
 }
 
+interface PoolMetadata {
+  pool: Pool;
+  schemaVersion: number | null;
+  columnCase: ColumnCase;
+}
+
 class PoolManager {
-  private pools: Map<string, Pool> = new Map();
+  private pools: Map<string, PoolMetadata> = new Map();
 
   private getPoolKey(connectionString: string, sslOptions?: SslOptions): string {
     const sslKey = sslOptions?.caCertificate
@@ -34,9 +41,9 @@ class PoolManager {
   getPool(connectionString: string, allowSelfSignedCert?: boolean, caCertificate?: string): Pool {
     const sslOptions: SslOptions = { allowSelfSignedCert, caCertificate };
     const poolKey = this.getPoolKey(connectionString, sslOptions);
-    let pool = this.pools.get(poolKey);
+    let metadata = this.pools.get(poolKey);
 
-    if (!pool) {
+    if (!metadata) {
       const config: PoolConfig = {
         connectionString,
         max: 5,
@@ -45,16 +52,71 @@ class PoolManager {
         ssl: this.getSslConfig(sslOptions),
       };
 
-      pool = new Pool(config);
+      const pool = new Pool(config);
 
       pool.on("error", (err) => {
         console.error("Unexpected pool error:", err);
       });
 
-      this.pools.set(poolKey, pool);
+      metadata = {
+        pool,
+        schemaVersion: null,
+        columnCase: 'snake_case', // Default, will be detected on first use
+      };
+
+      this.pools.set(poolKey, metadata);
     }
 
-    return pool;
+    return metadata.pool;
+  }
+
+  private async detectSchemaVersion(pool: Pool, schema: string): Promise<number> {
+    try {
+      const result = await pool.query(
+        `SELECT version FROM ${schema}.version ORDER BY version DESC LIMIT 1`
+      );
+
+      if (result.rows.length === 0) {
+        // No version found, assume latest
+        console.warn(`No version found in ${schema}.version table, defaulting to v10+ (snake_case)`);
+        return 23; // Default to v10+ (snake_case)
+      }
+
+      const version = parseInt(result.rows[0].version, 10);
+      console.log(`Detected pg-boss schema version: ${version} (${version >= 23 ? 'snake_case' : 'camelCase'})`);
+      return version;
+    } catch (error) {
+      // Version table doesn't exist or other error
+      console.warn(`Could not detect pg-boss schema version: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Default to latest version (snake_case)
+      return 23;
+    }
+  }
+
+  private getColumnCase(schemaVersion: number): ColumnCase {
+    return schemaVersion >= 23 ? 'snake_case' : 'camelCase';
+  }
+
+  async getMapper(
+    connectionString: string,
+    schema: string,
+    allowSelfSignedCert?: boolean,
+    caCertificate?: string
+  ): Promise<ColumnMapper> {
+    const sslOptions: SslOptions = { allowSelfSignedCert, caCertificate };
+    const poolKey = this.getPoolKey(connectionString, sslOptions);
+
+    // Get or create pool
+    const pool = this.getPool(connectionString, allowSelfSignedCert, caCertificate);
+    const metadata = this.pools.get(poolKey)!;
+
+    // Detect version if not already cached
+    if (metadata.schemaVersion === null) {
+      metadata.schemaVersion = await this.detectSchemaVersion(pool, schema);
+      metadata.columnCase = this.getColumnCase(metadata.schemaVersion);
+    }
+
+    return new ColumnMapper(metadata.columnCase);
   }
 
   async testConnection(
@@ -103,15 +165,15 @@ class PoolManager {
   async closePool(connectionString: string, allowSelfSignedCert?: boolean, caCertificate?: string): Promise<void> {
     const sslOptions: SslOptions = { allowSelfSignedCert, caCertificate };
     const poolKey = this.getPoolKey(connectionString, sslOptions);
-    const pool = this.pools.get(poolKey);
-    if (pool) {
-      await pool.end();
+    const metadata = this.pools.get(poolKey);
+    if (metadata) {
+      await metadata.pool.end();
       this.pools.delete(poolKey);
     }
   }
 
   async closeAll(): Promise<void> {
-    const promises = Array.from(this.pools.values()).map((pool) => pool.end());
+    const promises = Array.from(this.pools.values()).map((metadata) => metadata.pool.end());
     await Promise.all(promises);
     this.pools.clear();
   }

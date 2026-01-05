@@ -23,6 +23,7 @@ const getCachedDashboardStats = unstable_cache(
     caCertificate?: string
   ): Promise<DashboardData> => {
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
+    const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
 
     const dateOptions = {
       startDate: startDate ? new Date(startDate) : undefined,
@@ -30,8 +31,8 @@ const getCachedDashboardStats = unstable_cache(
     };
 
     const [stats, throughput] = await Promise.all([
-      getDashboardStats(pool, schema, dateOptions),
-      getThroughput(pool, schema, dateOptions),
+      getDashboardStats(pool, mapper, schema, dateOptions),
+      getThroughput(pool, mapper, schema, dateOptions),
     ]);
 
     return { stats, throughput };

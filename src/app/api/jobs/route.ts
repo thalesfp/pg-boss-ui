@@ -42,11 +42,12 @@ export async function GET(request: NextRequest) {
     const sortOrder = validateSortOrder(searchParams.get("sortOrder") || undefined);
 
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
+    const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
 
     // If jobId is provided, return single job
     if (jobIdParam) {
       const jobId = validateJobId(jobIdParam);
-      const job = await getJob(pool, jobId, schema);
+      const job = await getJob(pool, mapper, jobId, schema);
       if (!job) {
         return NextResponse.json({ error: "Job not found" }, { status: 404 });
       }
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Otherwise return paginated list
-    const result = await getJobs(pool, schema, {
+    const result = await getJobs(pool, mapper, schema, {
       queueName,
       state,
       limit,

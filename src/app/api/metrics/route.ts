@@ -24,11 +24,12 @@ export async function GET(request: NextRequest) {
     );
 
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
+    const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
     const options = { queueName, startDate, endDate };
 
     const [metrics, timeSeries] = await Promise.all([
-      getSpeedMetrics(pool, schema, options),
-      getSpeedMetricsOverTime(pool, schema, { ...options, granularity }),
+      getSpeedMetrics(pool, mapper, schema, options),
+      getSpeedMetricsOverTime(pool, mapper, schema, { ...options, granularity }),
     ]);
 
     return NextResponse.json({ metrics, timeSeries });

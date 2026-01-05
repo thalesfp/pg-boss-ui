@@ -28,12 +28,13 @@ export async function GET(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
+      const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
 
       const sendUpdate = async () => {
         try {
           const [stats, queues] = await Promise.all([
-            getDashboardStats(pool, schema),
-            getQueueStats(pool, schema),
+            getDashboardStats(pool, mapper, schema),
+            getQueueStats(pool, mapper, schema),
           ]);
 
           const data = JSON.stringify({

@@ -32,6 +32,7 @@ const getCachedSpeedMetrics = unstable_cache(
     caCertificate?: string
   ): Promise<MetricsData> => {
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
+    const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
 
     const dateOptions = {
       queueName,
@@ -41,8 +42,8 @@ const getCachedSpeedMetrics = unstable_cache(
     };
 
     const [metrics, timeSeries] = await Promise.all([
-      getSpeedMetrics(pool, schema, dateOptions),
-      getSpeedMetricsOverTime(pool, schema, dateOptions),
+      getSpeedMetrics(pool, mapper, schema, dateOptions),
+      getSpeedMetricsOverTime(pool, mapper, schema, dateOptions),
     ]);
 
     return { metrics, timeSeries };

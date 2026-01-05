@@ -32,8 +32,9 @@ export async function retryJob(jobId: string): Promise<ActionResult> {
 
     const validatedJobId = validateJobId(jobId);
     const pool = poolManager.getPool(session.connectionString, session.allowSelfSignedCert, session.caCertificate);
+    const mapper = await poolManager.getMapper(session.connectionString, session.schema, session.allowSelfSignedCert, session.caCertificate);
 
-    const newJobId = await dbRetryJob(pool, validatedJobId, session.schema);
+    const newJobId = await dbRetryJob(pool, mapper, validatedJobId, session.schema);
 
     // Revalidate cache tags to update UI
     revalidateTag("jobs", "max");
@@ -63,8 +64,9 @@ export async function cancelJob(jobId: string): Promise<ActionResult> {
 
     const validatedJobId = validateJobId(jobId);
     const pool = poolManager.getPool(session.connectionString, session.allowSelfSignedCert, session.caCertificate);
+    const mapper = await poolManager.getMapper(session.connectionString, session.schema, session.allowSelfSignedCert, session.caCertificate);
 
-    const result = await dbCancelJob(pool, validatedJobId, session.schema);
+    const result = await dbCancelJob(pool, mapper, validatedJobId, session.schema);
 
     if (!result) {
       return { success: false, error: "Job not found or not in a cancellable state" };
@@ -98,8 +100,9 @@ export async function retryAllJobs(queueName: string): Promise<ActionResult> {
 
     const validatedQueueName = validateQueueName(queueName);
     const pool = poolManager.getPool(session.connectionString, session.allowSelfSignedCert, session.caCertificate);
+    const mapper = await poolManager.getMapper(session.connectionString, session.schema, session.allowSelfSignedCert, session.caCertificate);
 
-    const count = await dbRetryAllJobs(pool, validatedQueueName, session.schema);
+    const count = await dbRetryAllJobs(pool, mapper, validatedQueueName, session.schema);
 
     // Revalidate cache tags to update UI
     revalidateTag("jobs", "max");
@@ -130,8 +133,9 @@ export async function cancelAllJobs(queueName: string): Promise<ActionResult> {
 
     const validatedQueueName = validateQueueName(queueName);
     const pool = poolManager.getPool(session.connectionString, session.allowSelfSignedCert, session.caCertificate);
+    const mapper = await poolManager.getMapper(session.connectionString, session.schema, session.allowSelfSignedCert, session.caCertificate);
 
-    const count = await dbCancelAllJobs(pool, validatedQueueName, session.schema);
+    const count = await dbCancelAllJobs(pool, mapper, validatedQueueName, session.schema);
 
     // Revalidate cache tags to update UI
     revalidateTag("jobs", "max");

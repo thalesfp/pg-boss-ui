@@ -49,7 +49,8 @@ const getCachedQueueStats = unstable_cache(
     caCertificate?: string
   ): Promise<QueueStats | null> => {
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const stats = await getQueueStats(pool, schema);
+    const mapper = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const stats = await getQueueStats(pool, mapper, schema);
     return stats.find((s) => s.name === queueName) || null;
   },
   ["queue-stats"],

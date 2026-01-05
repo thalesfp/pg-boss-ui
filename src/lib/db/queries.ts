@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import type { ColumnMapper } from "./column-mapper";
 import type {
   Job,
   Queue,
@@ -13,33 +14,34 @@ import type {
   SpeedMetricsOverTime,
 } from "./types";
 
-function mapJob(row: Record<string, unknown>): Job {
+function mapJob(row: Record<string, unknown>, mapper: ColumnMapper): Job {
   return {
     id: row.id as string,
     name: row.name as string,
     priority: row.priority as number,
     data: row.data as Record<string, unknown> | null,
     state: row.state as JobState,
-    retryLimit: row.retry_limit as number,
-    retryCount: row.retry_count as number,
-    retryDelay: row.retry_delay as number,
-    retryBackoff: row.retry_backoff as boolean,
-    startAfter: new Date(row.start_after as string),
-    startedOn: row.started_on ? new Date(row.started_on as string) : null,
-    singletonKey: row.singleton_key as string | null,
-    singletonOn: row.singleton_on ? new Date(row.singleton_on as string) : null,
-    expireIn: row.expire_in as string,
-    createdOn: new Date(row.created_on as string),
-    completedOn: row.completed_on ? new Date(row.completed_on as string) : null,
-    keepUntil: row.keep_until ? new Date(row.keep_until as string) : null,
+    retryLimit: mapper.getFromRow(row, 'retry_limit') as number,
+    retryCount: mapper.getFromRow(row, 'retry_count') as number,
+    retryDelay: mapper.getFromRow(row, 'retry_delay') as number,
+    retryBackoff: mapper.getFromRow(row, 'retry_backoff') as boolean,
+    startAfter: new Date(mapper.getFromRow(row, 'start_after') as string),
+    startedOn: mapper.getFromRow(row, 'started_on') ? new Date(mapper.getFromRow(row, 'started_on') as string) : null,
+    singletonKey: mapper.getFromRow(row, 'singleton_key') as string | null,
+    singletonOn: mapper.getFromRow(row, 'singleton_on') ? new Date(mapper.getFromRow(row, 'singleton_on') as string) : null,
+    expireIn: mapper.getFromRow(row, 'expire_in') as string,
+    createdOn: new Date(mapper.getFromRow(row, 'created_on') as string),
+    completedOn: mapper.getFromRow(row, 'completed_on') ? new Date(mapper.getFromRow(row, 'completed_on') as string) : null,
+    keepUntil: mapper.getFromRow(row, 'keep_until') ? new Date(mapper.getFromRow(row, 'keep_until') as string) : null,
     output: row.output as Record<string, unknown> | null,
-    deadLetter: row.dead_letter as string | null,
+    deadLetter: mapper.getFromRow(row, 'dead_letter') as string | null,
     policy: row.policy as string | null,
   };
 }
 
 export async function getQueueStats(
   pool: Pool,
+  mapper: ColumnMapper,
   schema: string = "pgboss",
   options: {
     dateField?: DateField;
@@ -53,11 +55,11 @@ export async function getQueueStats(
   let paramIndex = 1;
 
   if (startDate) {
-    conditions.push(`${dateField} >= $${paramIndex++}`);
+    conditions.push(`${mapper.col(dateField)} >= $${paramIndex++}`);
     params.push(startDate.toISOString());
   }
   if (endDate) {
-    conditions.push(`${dateField} <= $${paramIndex++}`);
+    conditions.push(`${mapper.col(dateField)} <= $${paramIndex++}`);
     params.push(endDate.toISOString());
   }
 
@@ -94,6 +96,7 @@ export async function getQueueStats(
 
 export async function getDashboardStats(
   pool: Pool,
+  mapper: ColumnMapper,
   schema: string = "pgboss",
   options: {
     startDate?: Date;
@@ -108,11 +111,11 @@ export async function getDashboardStats(
   let completedOnParamIndex = 1;
 
   if (startDate) {
-    completedOnConditions.push(`completed_on >= $${completedOnParamIndex++}`);
+    completedOnConditions.push(`${mapper.col('completed_on')} >= $${completedOnParamIndex++}`);
     completedOnParams.push(startDate.toISOString());
   }
   if (endDate) {
-    completedOnConditions.push(`completed_on <= $${completedOnParamIndex++}`);
+    completedOnConditions.push(`${mapper.col('completed_on')} <= $${completedOnParamIndex++}`);
     completedOnParams.push(endDate.toISOString());
   }
 
@@ -136,7 +139,7 @@ export async function getDashboardStats(
   );
 
   // Queue stats are NOT date-filtered - they represent live queue health
-  const queues = await getQueueStats(pool, schema);
+  const queues = await getQueueStats(pool, mapper, schema);
 
   const stats = statsResult.rows[0];
   return {
@@ -151,6 +154,7 @@ export async function getDashboardStats(
 
 export async function getThroughput(
   pool: Pool,
+  mapper: ColumnMapper,
   schema: string = "pgboss",
   options: {
     startDate?: Date;
@@ -165,23 +169,23 @@ export async function getThroughput(
 
   // undefined dates = all time (no date filter)
   if (startDate) {
-    conditions.push(`completed_on >= $${paramIndex++}`);
+    conditions.push(`${mapper.col('completed_on')} >= $${paramIndex++}`);
     params.push(startDate.toISOString());
   }
   if (endDate) {
-    conditions.push(`completed_on <= $${paramIndex++}`);
+    conditions.push(`${mapper.col('completed_on')} <= $${paramIndex++}`);
     params.push(endDate.toISOString());
   }
 
   const result = await pool.query(
     `
     SELECT
-      date_trunc('minute', completed_on) as time,
+      date_trunc('minute', ${mapper.col('completed_on')}) as time,
       COUNT(*) FILTER (WHERE state::text = 'completed') as completed,
       COUNT(*) FILTER (WHERE state::text = 'failed') as failed
     FROM ${schema}.job
     WHERE ${conditions.join(" AND ")}
-    GROUP BY date_trunc('minute', completed_on)
+    GROUP BY date_trunc('minute', ${mapper.col('completed_on')})
     ORDER BY time DESC
     LIMIT $${paramIndex}
   `,
@@ -316,6 +320,7 @@ export async function getQueuesWithStats(
 
 export async function getJobs(
   pool: Pool,
+  mapper: ColumnMapper,
   schema: string = "pgboss",
   options: {
     queueName?: string;
@@ -363,17 +368,20 @@ export async function getJobs(
   }
 
   if (startDate) {
-    conditions.push(`${dateField} >= $${paramIndex++}`);
+    conditions.push(`${mapper.col(dateField)} >= $${paramIndex++}`);
     params.push(startDate.toISOString());
   }
 
   if (endDate) {
-    conditions.push(`${dateField} <= $${paramIndex++}`);
+    conditions.push(`${mapper.col(dateField)} <= $${paramIndex++}`);
     params.push(endDate.toISOString());
   }
 
   const whereClause =
     conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  // Map sortBy column name
+  const sortColumn = (sortBy === "created_on" || sortBy === "completed_on") ? mapper.col(sortBy) : sortBy;
 
   const [jobsResult, countResult] = await Promise.all([
     pool.query(
@@ -381,7 +389,7 @@ export async function getJobs(
       SELECT *
       FROM ${schema}.job
       ${whereClause}
-      ORDER BY ${sortBy} ${sortOrder.toUpperCase()}
+      ORDER BY ${sortColumn} ${sortOrder.toUpperCase()}
       LIMIT $${paramIndex++}
       OFFSET $${paramIndex}
     `,
@@ -398,13 +406,14 @@ export async function getJobs(
   ]);
 
   return {
-    jobs: jobsResult.rows.map(mapJob),
+    jobs: jobsResult.rows.map((row) => mapJob(row, mapper)),
     total: parseInt(countResult.rows[0].count, 10),
   };
 }
 
 export async function getJob(
   pool: Pool,
+  mapper: ColumnMapper,
   jobId: string,
   schema: string = "pgboss"
 ): Promise<Job | null> {
@@ -417,11 +426,12 @@ export async function getJob(
     return null;
   }
 
-  return mapJob(result.rows[0]);
+  return mapJob(result.rows[0], mapper);
 }
 
 export async function retryJob(
   pool: Pool,
+  mapper: ColumnMapper,
   jobId: string,
   schema: string = "pgboss"
 ): Promise<string> {
@@ -429,10 +439,10 @@ export async function retryJob(
     `
     UPDATE ${schema}.job
     SET state = 'created',
-        retry_count = 0,
-        completed_on = NULL,
-        started_on = NULL,
-        start_after = NOW(),
+        ${mapper.col('retry_count')} = 0,
+        ${mapper.col('completed_on')} = NULL,
+        ${mapper.col('started_on')} = NULL,
+        ${mapper.col('start_after')} = NOW(),
         output = NULL
     WHERE id = $1
       AND state::text IN ('failed', 'cancelled')
@@ -450,6 +460,7 @@ export async function retryJob(
 
 export async function retryAllJobs(
   pool: Pool,
+  mapper: ColumnMapper,
   queueName: string,
   schema: string = "pgboss"
 ): Promise<number> {
@@ -457,10 +468,10 @@ export async function retryAllJobs(
     `
     UPDATE ${schema}.job
     SET state = 'created',
-        retry_count = 0,
-        completed_on = NULL,
-        started_on = NULL,
-        start_after = NOW(),
+        ${mapper.col('retry_count')} = 0,
+        ${mapper.col('completed_on')} = NULL,
+        ${mapper.col('started_on')} = NULL,
+        ${mapper.col('start_after')} = NOW(),
         output = NULL
     WHERE name = $1
       AND state::text IN ('failed', 'cancelled')
@@ -473,13 +484,14 @@ export async function retryAllJobs(
 
 export async function cancelJob(
   pool: Pool,
+  mapper: ColumnMapper,
   jobId: string,
   schema: string = "pgboss"
 ): Promise<boolean> {
   const result = await pool.query(
     `
     UPDATE ${schema}.job
-    SET state = 'cancelled', completed_on = NOW()
+    SET state = 'cancelled', ${mapper.col('completed_on')} = NOW()
     WHERE id = $1 AND state IN ('created', 'retry')
     RETURNING id
   `,
@@ -491,13 +503,14 @@ export async function cancelJob(
 
 export async function cancelAllJobs(
   pool: Pool,
+  mapper: ColumnMapper,
   queueName: string,
   schema: string = "pgboss"
 ): Promise<number> {
   const result = await pool.query(
     `
     UPDATE ${schema}.job
-    SET state = 'cancelled', completed_on = NOW()
+    SET state = 'cancelled', ${mapper.col('completed_on')} = NOW()
     WHERE name = $1 AND state::text IN ('created', 'retry')
   `,
     [queueName]
@@ -533,6 +546,7 @@ export async function purgeQueue(
 
 export async function getSchedules(
   pool: Pool,
+  mapper: ColumnMapper,
   schema: string = "pgboss"
 ): Promise<Schedule[]> {
   const result = await pool.query(`
@@ -542,8 +556,8 @@ export async function getSchedules(
       timezone,
       data,
       options,
-      created_on,
-      updated_on
+      ${mapper.col('created_on')} as created_on,
+      ${mapper.col('updated_on')} as updated_on
     FROM ${schema}.schedule
     ORDER BY name
   `);
@@ -592,6 +606,7 @@ function parsePercentileMetrics(
 
 export async function getSpeedMetrics(
   pool: Pool,
+  mapper: ColumnMapper,
   schema: string = "pgboss",
   options: {
     queueName?: string;
@@ -602,8 +617,8 @@ export async function getSpeedMetrics(
   const { queueName, startDate, endDate } = options;
   const conditions: string[] = [
     "state::text = 'completed'",
-    "started_on IS NOT NULL",
-    "completed_on IS NOT NULL",
+    `${mapper.col('started_on')} IS NOT NULL`,
+    `${mapper.col('completed_on')} IS NOT NULL`,
   ];
   const params: unknown[] = [];
   let paramIndex = 1;
@@ -614,12 +629,12 @@ export async function getSpeedMetrics(
   }
 
   if (startDate) {
-    conditions.push(`completed_on >= $${paramIndex++}`);
+    conditions.push(`${mapper.col('completed_on')} >= $${paramIndex++}`);
     params.push(startDate.toISOString());
   }
 
   if (endDate) {
-    conditions.push(`completed_on <= $${paramIndex++}`);
+    conditions.push(`${mapper.col('completed_on')} <= $${paramIndex++}`);
     params.push(endDate.toISOString());
   }
   // undefined dates = all time (no date filter)
@@ -630,28 +645,28 @@ export async function getSpeedMetrics(
     `
     SELECT
       -- Processing time (completed_on - started_on)
-      MIN(EXTRACT(EPOCH FROM (completed_on - started_on)) * 1000) as processing_min,
-      MAX(EXTRACT(EPOCH FROM (completed_on - started_on)) * 1000) as processing_max,
-      AVG(EXTRACT(EPOCH FROM (completed_on - started_on)) * 1000) as processing_avg,
-      PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (completed_on - started_on)) * 1000) as processing_p50,
-      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (completed_on - started_on)) * 1000) as processing_p95,
-      PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (completed_on - started_on)) * 1000) as processing_p99,
+      MIN(EXTRACT(EPOCH FROM (${mapper.col('completed_on')} - ${mapper.col('started_on')})) * 1000) as processing_min,
+      MAX(EXTRACT(EPOCH FROM (${mapper.col('completed_on')} - ${mapper.col('started_on')})) * 1000) as processing_max,
+      AVG(EXTRACT(EPOCH FROM (${mapper.col('completed_on')} - ${mapper.col('started_on')})) * 1000) as processing_avg,
+      PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (${mapper.col('completed_on')} - ${mapper.col('started_on')})) * 1000) as processing_p50,
+      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (${mapper.col('completed_on')} - ${mapper.col('started_on')})) * 1000) as processing_p95,
+      PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (${mapper.col('completed_on')} - ${mapper.col('started_on')})) * 1000) as processing_p99,
 
       -- Wait time (started_on - created_on)
-      MIN(EXTRACT(EPOCH FROM (started_on - created_on)) * 1000) as wait_min,
-      MAX(EXTRACT(EPOCH FROM (started_on - created_on)) * 1000) as wait_max,
-      AVG(EXTRACT(EPOCH FROM (started_on - created_on)) * 1000) as wait_avg,
-      PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (started_on - created_on)) * 1000) as wait_p50,
-      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (started_on - created_on)) * 1000) as wait_p95,
-      PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (started_on - created_on)) * 1000) as wait_p99,
+      MIN(EXTRACT(EPOCH FROM (${mapper.col('started_on')} - ${mapper.col('created_on')})) * 1000) as wait_min,
+      MAX(EXTRACT(EPOCH FROM (${mapper.col('started_on')} - ${mapper.col('created_on')})) * 1000) as wait_max,
+      AVG(EXTRACT(EPOCH FROM (${mapper.col('started_on')} - ${mapper.col('created_on')})) * 1000) as wait_avg,
+      PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (${mapper.col('started_on')} - ${mapper.col('created_on')})) * 1000) as wait_p50,
+      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (${mapper.col('started_on')} - ${mapper.col('created_on')})) * 1000) as wait_p95,
+      PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (${mapper.col('started_on')} - ${mapper.col('created_on')})) * 1000) as wait_p99,
 
       -- End-to-end latency (completed_on - created_on)
-      MIN(EXTRACT(EPOCH FROM (completed_on - created_on)) * 1000) as e2e_min,
-      MAX(EXTRACT(EPOCH FROM (completed_on - created_on)) * 1000) as e2e_max,
-      AVG(EXTRACT(EPOCH FROM (completed_on - created_on)) * 1000) as e2e_avg,
-      PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (completed_on - created_on)) * 1000) as e2e_p50,
-      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (completed_on - created_on)) * 1000) as e2e_p95,
-      PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (completed_on - created_on)) * 1000) as e2e_p99,
+      MIN(EXTRACT(EPOCH FROM (${mapper.col('completed_on')} - ${mapper.col('created_on')})) * 1000) as e2e_min,
+      MAX(EXTRACT(EPOCH FROM (${mapper.col('completed_on')} - ${mapper.col('created_on')})) * 1000) as e2e_max,
+      AVG(EXTRACT(EPOCH FROM (${mapper.col('completed_on')} - ${mapper.col('created_on')})) * 1000) as e2e_avg,
+      PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (${mapper.col('completed_on')} - ${mapper.col('created_on')})) * 1000) as e2e_p50,
+      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (${mapper.col('completed_on')} - ${mapper.col('created_on')})) * 1000) as e2e_p95,
+      PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (${mapper.col('completed_on')} - ${mapper.col('created_on')})) * 1000) as e2e_p99,
 
       COUNT(*) as sample_count
     FROM ${schema}.job
@@ -671,6 +686,7 @@ export async function getSpeedMetrics(
 
 export async function getSpeedMetricsOverTime(
   pool: Pool,
+  mapper: ColumnMapper,
   schema: string = "pgboss",
   options: {
     queueName?: string;
@@ -683,8 +699,8 @@ export async function getSpeedMetricsOverTime(
   const { queueName, startDate, endDate, granularity = "minute", limit = 500 } = options;
   const conditions: string[] = [
     "state::text = 'completed'",
-    "started_on IS NOT NULL",
-    "completed_on IS NOT NULL",
+    `${mapper.col('started_on')} IS NOT NULL`,
+    `${mapper.col('completed_on')} IS NOT NULL`,
   ];
   const params: unknown[] = [];
   let paramIndex = 1;
@@ -695,12 +711,12 @@ export async function getSpeedMetricsOverTime(
   }
 
   if (startDate) {
-    conditions.push(`completed_on >= $${paramIndex++}`);
+    conditions.push(`${mapper.col('completed_on')} >= $${paramIndex++}`);
     params.push(startDate.toISOString());
   }
 
   if (endDate) {
-    conditions.push(`completed_on <= $${paramIndex++}`);
+    conditions.push(`${mapper.col('completed_on')} <= $${paramIndex++}`);
     params.push(endDate.toISOString());
   }
   // undefined dates = all time (no date filter)
@@ -710,15 +726,15 @@ export async function getSpeedMetricsOverTime(
   const result = await pool.query(
     `
     SELECT
-      date_trunc('${granularity}', completed_on) as time,
-      PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (completed_on - started_on)) * 1000) as processing_p50,
-      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (completed_on - started_on)) * 1000) as processing_p95,
-      PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (started_on - created_on)) * 1000) as wait_p50,
-      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (started_on - created_on)) * 1000) as wait_p95,
+      date_trunc('${granularity}', ${mapper.col('completed_on')}) as time,
+      PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (${mapper.col('completed_on')} - ${mapper.col('started_on')})) * 1000) as processing_p50,
+      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (${mapper.col('completed_on')} - ${mapper.col('started_on')})) * 1000) as processing_p95,
+      PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (${mapper.col('started_on')} - ${mapper.col('created_on')})) * 1000) as wait_p50,
+      PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (${mapper.col('started_on')} - ${mapper.col('created_on')})) * 1000) as wait_p95,
       COUNT(*) as count
     FROM ${schema}.job
     WHERE ${whereClause}
-    GROUP BY date_trunc('${granularity}', completed_on)
+    GROUP BY date_trunc('${granularity}', ${mapper.col('completed_on')})
     ORDER BY time DESC
     LIMIT $${paramIndex}
   `,
