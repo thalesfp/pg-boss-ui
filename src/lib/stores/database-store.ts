@@ -87,22 +87,26 @@ export const useDatabaseStore = create<DatabaseStore>()(
       addConnection: async (connection) => {
         const id = crypto.randomUUID();
         const newConnection = { ...connection, id };
-        const isFirst = get().connections.length === 0;
 
         set((state) => ({
           connections: [...state.connections, newConnection],
           selectedId: state.selectedId || id,
         }));
 
-        // If this is the first connection, sync the session
-        if (isFirst) {
+        // Sync session if this connection was selected (no previous selection)
+        const wasSelected = get().selectedId === id;
+        if (wasSelected) {
           try {
             await updateSession(newConnection);
             // Invalidate cache to reload data with new connection
             await invalidateAllCache();
           } catch (error) {
             // Revert: remove the connection we just added
-            set({ connections: [], selectedId: null });
+            const currentState = get();
+            set({
+              connections: currentState.connections.filter(c => c.id !== id),
+              selectedId: null
+            });
             throw error;
           }
         }
