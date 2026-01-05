@@ -69,7 +69,7 @@ async function QueueDetailContent({ params, searchParams }: QueueDetailPageProps
   // Fetch data in parallel
   const [queues, queueStats, metricsData] = await Promise.all([
     getQueuesData(),
-    getQueueStatsData(decodedQueueName),
+    getQueueStatsData(decodedQueueName, startDate, endDate),
     getMetricsData({
       queueName: decodedQueueName,
       startDate,

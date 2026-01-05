@@ -22,20 +22,20 @@ export function StatsCards({ stats, isLoading }: StatsCardsProps) {
       title: "Total Jobs",
       value: stats?.totalJobs ?? 0,
       icon: ListTodo,
-      description: "All jobs in the system",
+      description: "In selected range",
     },
     {
       title: "Created",
       value: stats?.createdJobs ?? 0,
       icon: Clock,
-      description: "Queued for processing",
+      description: "In selected range",
       className: "text-yellow-500",
     },
     {
       title: "Active",
       value: stats?.activeJobs ?? 0,
       icon: Activity,
-      description: "Currently processing",
+      description: "In selected range",
       className: "text-blue-500",
     },
     {

@@ -46,12 +46,21 @@ const getCachedQueueStats = unstable_cache(
     connectionString: string,
     schema: string,
     queueName: string,
+    startDate?: string,
+    endDate?: string,
     allowSelfSignedCert?: boolean,
     caCertificate?: string
   ): Promise<QueueStats | null> => {
     const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
     const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
-    const stats = await getQueueStats(pool, mapper, schema);
+
+    const dateOptions = {
+      dateField: 'created_on' as const,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate: endDate ? new Date(endDate) : undefined,
+    };
+
+    const stats = await getQueueStats(pool, mapper, schema, dateOptions);
     return stats.find((s) => s.name === queueName) || null;
   },
   ["queue-stats"],
@@ -64,15 +73,29 @@ const getCachedQueueStats = unstable_cache(
 /**
  * Fetch statistics for a specific queue
  * @param queueName - Name of the queue
+ * @param startDate - Optional start date for filtering
+ * @param endDate - Optional end date for filtering
  * @returns Queue statistics or null if not found
  * @throws Error if no active session
  */
-export async function getQueueStatsData(queueName: string): Promise<QueueStats | null> {
+export async function getQueueStatsData(
+  queueName: string,
+  startDate?: Date,
+  endDate?: Date
+): Promise<QueueStats | null> {
   const session = await getSession();
 
   if (!session) {
     throw new Error("No active connection");
   }
 
-  return getCachedQueueStats(session.connectionString, session.schema, queueName, session.allowSelfSignedCert, session.caCertificate);
+  return getCachedQueueStats(
+    session.connectionString,
+    session.schema,
+    queueName,
+    startDate?.toISOString(),
+    endDate?.toISOString(),
+    session.allowSelfSignedCert,
+    session.caCertificate
+  );
 }

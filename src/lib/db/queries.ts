@@ -106,10 +106,28 @@ export async function getDashboardStats(
 ): Promise<DashboardStats> {
   const { startDate, endDate } = options;
 
+  // Build date conditions for created_on (used for total, created, active jobs)
+  const createdOnConditions: string[] = [];
+  const createdOnParams: unknown[] = [];
+  let createdOnParamIndex = 1;
+
+  if (startDate) {
+    createdOnConditions.push(`${mapper.col('created_on')} >= $${createdOnParamIndex++}`);
+    createdOnParams.push(startDate.toISOString());
+  }
+  if (endDate) {
+    createdOnConditions.push(`${mapper.col('created_on')} <= $${createdOnParamIndex++}`);
+    createdOnParams.push(endDate.toISOString());
+  }
+
+  const createdOnWhereClause = createdOnConditions.length > 0
+    ? `WHERE ${createdOnConditions.join(" AND ")}`
+    : "";
+
   // Build date conditions for completed_on (used for completed, failed jobs only)
   const completedOnConditions: string[] = [];
   const completedOnParams: unknown[] = [];
-  let completedOnParamIndex = 1;
+  let completedOnParamIndex = createdOnParamIndex;
 
   if (startDate) {
     completedOnConditions.push(`${mapper.col('completed_on')} >= $${completedOnParamIndex++}`);
@@ -126,6 +144,7 @@ export async function getDashboardStats(
 
   // Consolidated single query that gets all dashboard stats at once
   // This replaces 5 separate COUNT queries with one aggregation query
+  // Filters by created_on for all jobs, with additional completed_on filter for completed/failed
   const statsResult = await pool.query(
     `
     SELECT
@@ -135,12 +154,17 @@ export async function getDashboardStats(
       COUNT(*) FILTER (WHERE state::text = 'completed' ${completedOnAndClause}) as completed_range,
       COUNT(*) FILTER (WHERE state::text = 'failed' ${completedOnAndClause}) as failed_range
     FROM ${schema}.job
+    ${createdOnWhereClause}
   `,
-    completedOnParams
+    [...createdOnParams, ...completedOnParams]
   );
 
-  // Queue stats are NOT date-filtered - they represent live queue health
-  const queues = await getQueueStats(pool, mapper, schema);
+  // Queue stats are filtered by date range using created_on
+  const queues = await getQueueStats(pool, mapper, schema, {
+    dateField: 'created_on',
+    startDate,
+    endDate,
+  });
 
   const stats = statsResult.rows[0];
   return {
