@@ -45,39 +45,58 @@ export async function getQueueStats(
   mapper: ColumnMapper,
   schema: string = "pgboss",
   options: {
-    dateField?: DateField;
     startDate?: Date;
     endDate?: Date;
   } = {}
 ): Promise<QueueStats[]> {
-  const { dateField = "created_on", startDate, endDate } = options;
-  const conditions: string[] = [];
+  const { startDate, endDate } = options;
+
+  // Build parameters array
   const params: unknown[] = [];
+
+  // Add created_on date parameters for pending states
+  if (startDate) params.push(startDate.toISOString());
+  if (endDate) params.push(endDate.toISOString());
+
+  // Add completed_on date parameters for terminal states
+  if (startDate) params.push(startDate.toISOString());
+  if (endDate) params.push(endDate.toISOString());
+
+  // Build param index references
   let paramIndex = 1;
+  const createdOnStartParam = startDate ? `$${paramIndex++}` : null;
+  const createdOnEndParam = endDate ? `$${paramIndex++}` : null;
+  const completedOnStartParam = startDate ? `$${paramIndex++}` : null;
+  const completedOnEndParam = endDate ? `$${paramIndex++}` : null;
 
-  if (startDate) {
-    conditions.push(`${mapper.col(dateField)} >= $${paramIndex++}`);
-    params.push(startDate.toISOString());
-  }
-  if (endDate) {
-    conditions.push(`${mapper.col(dateField)} <= $${paramIndex++}`);
-    params.push(endDate.toISOString());
-  }
+  // Build filter conditions
+  const createdOnConditions: string[] = [];
+  if (createdOnStartParam) createdOnConditions.push(`${mapper.col('created_on')} >= ${createdOnStartParam}`);
+  if (createdOnEndParam) createdOnConditions.push(`${mapper.col('created_on')} <= ${createdOnEndParam}`);
 
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const completedOnConditions: string[] = [];
+  if (completedOnStartParam) completedOnConditions.push(`${mapper.col('completed_on')} >= ${completedOnStartParam}`);
+  if (completedOnEndParam) completedOnConditions.push(`${mapper.col('completed_on')} <= ${completedOnEndParam}`);
+
+  const createdOnFilter = createdOnConditions.length > 0
+    ? ` AND ${createdOnConditions.join(" AND ")}`
+    : "";
+
+  const completedOnFilter = completedOnConditions.length > 0
+    ? ` AND ${completedOnConditions.join(" AND ")}`
+    : "";
 
   const result = await pool.query(
     `
     SELECT
       name,
-      COUNT(*) FILTER (WHERE state::text = 'created') as created,
-      COUNT(*) FILTER (WHERE state::text = 'retry') as retry,
-      COUNT(*) FILTER (WHERE state::text = 'active') as active,
-      COUNT(*) FILTER (WHERE state::text = 'completed') as completed,
-      COUNT(*) FILTER (WHERE state::text = 'cancelled') as cancelled,
-      COUNT(*) FILTER (WHERE state::text = 'failed') as failed
+      COUNT(*) FILTER (WHERE state::text = 'created'${createdOnFilter}) as created,
+      COUNT(*) FILTER (WHERE state::text = 'retry'${createdOnFilter}) as retry,
+      COUNT(*) FILTER (WHERE state::text = 'active'${createdOnFilter}) as active,
+      COUNT(*) FILTER (WHERE state::text = 'completed'${completedOnFilter}) as completed,
+      COUNT(*) FILTER (WHERE state::text = 'cancelled'${completedOnFilter}) as cancelled,
+      COUNT(*) FILTER (WHERE state::text = 'failed'${completedOnFilter}) as failed
     FROM ${schema}.job
-    ${whereClause}
     GROUP BY name
     ORDER BY name
   `,
@@ -106,62 +125,62 @@ export async function getDashboardStats(
 ): Promise<DashboardStats> {
   const { startDate, endDate } = options;
 
-  // Build date conditions for created_on (used for total, created, active jobs)
+  // Build parameters array
+  const params: unknown[] = [];
+
+  // Add created_on date parameters for pending states
+  if (startDate) params.push(startDate.toISOString());
+  if (endDate) params.push(endDate.toISOString());
+
+  // Add completed_on date parameters for terminal states
+  if (startDate) params.push(startDate.toISOString());
+  if (endDate) params.push(endDate.toISOString());
+
+  // Build param index references
+  let paramIndex = 1;
+  const createdOnStartParam = startDate ? `$${paramIndex++}` : null;
+  const createdOnEndParam = endDate ? `$${paramIndex++}` : null;
+  const completedOnStartParam = startDate ? `$${paramIndex++}` : null;
+  const completedOnEndParam = endDate ? `$${paramIndex++}` : null;
+
+  // Build filter conditions
   const createdOnConditions: string[] = [];
-  const createdOnParams: unknown[] = [];
-  let createdOnParamIndex = 1;
+  if (createdOnStartParam) createdOnConditions.push(`${mapper.col('created_on')} >= ${createdOnStartParam}`);
+  if (createdOnEndParam) createdOnConditions.push(`${mapper.col('created_on')} <= ${createdOnEndParam}`);
 
-  if (startDate) {
-    createdOnConditions.push(`${mapper.col('created_on')} >= $${createdOnParamIndex++}`);
-    createdOnParams.push(startDate.toISOString());
-  }
-  if (endDate) {
-    createdOnConditions.push(`${mapper.col('created_on')} <= $${createdOnParamIndex++}`);
-    createdOnParams.push(endDate.toISOString());
-  }
+  const completedOnConditions: string[] = [];
+  if (completedOnStartParam) completedOnConditions.push(`${mapper.col('completed_on')} >= ${completedOnStartParam}`);
+  if (completedOnEndParam) completedOnConditions.push(`${mapper.col('completed_on')} <= ${completedOnEndParam}`);
 
-  const createdOnWhereClause = createdOnConditions.length > 0
-    ? `WHERE ${createdOnConditions.join(" AND ")}`
+  const createdOnFilter = createdOnConditions.length > 0
+    ? ` AND ${createdOnConditions.join(" AND ")}`
     : "";
 
-  // Build date conditions for completed_on (used for completed, failed jobs only)
-  const completedOnConditions: string[] = [];
-  const completedOnParams: unknown[] = [];
-  let completedOnParamIndex = createdOnParamIndex;
-
-  if (startDate) {
-    completedOnConditions.push(`${mapper.col('completed_on')} >= $${completedOnParamIndex++}`);
-    completedOnParams.push(startDate.toISOString());
-  }
-  if (endDate) {
-    completedOnConditions.push(`${mapper.col('completed_on')} <= $${completedOnParamIndex++}`);
-    completedOnParams.push(endDate.toISOString());
-  }
-
-  const completedOnAndClause = completedOnConditions.length > 0
-    ? `AND ${completedOnConditions.join(" AND ")}`
+  const completedOnFilter = completedOnConditions.length > 0
+    ? ` AND ${completedOnConditions.join(" AND ")}`
     : "";
 
   // Consolidated single query that gets all dashboard stats at once
-  // This replaces 5 separate COUNT queries with one aggregation query
-  // Filters by created_on for all jobs, with additional completed_on filter for completed/failed
+  // Filters pending states (created/retry/active) by created_on
+  // Filters terminal states (completed/failed) by completed_on
   const statsResult = await pool.query(
     `
     SELECT
-      COUNT(*) as total,
-      COUNT(*) FILTER (WHERE state::text = 'created') as created,
-      COUNT(*) FILTER (WHERE state::text = 'active') as active,
-      COUNT(*) FILTER (WHERE state::text = 'completed' ${completedOnAndClause}) as completed_range,
-      COUNT(*) FILTER (WHERE state::text = 'failed' ${completedOnAndClause}) as failed_range
+      COUNT(*) FILTER (WHERE
+        (state::text IN ('created', 'retry', 'active')${createdOnFilter}) OR
+        (state::text IN ('completed', 'failed', 'cancelled')${completedOnFilter})
+      ) as total,
+      COUNT(*) FILTER (WHERE state::text = 'created'${createdOnFilter}) as created,
+      COUNT(*) FILTER (WHERE state::text = 'active'${createdOnFilter}) as active,
+      COUNT(*) FILTER (WHERE state::text = 'completed'${completedOnFilter}) as completed_range,
+      COUNT(*) FILTER (WHERE state::text = 'failed'${completedOnFilter}) as failed_range
     FROM ${schema}.job
-    ${createdOnWhereClause}
   `,
-    [...createdOnParams, ...completedOnParams]
+    params
   );
 
-  // Queue stats are filtered by date range using created_on
+  // Queue stats now use the same date filtering logic
   const queues = await getQueueStats(pool, mapper, schema, {
-    dateField: 'created_on',
     startDate,
     endDate,
   });

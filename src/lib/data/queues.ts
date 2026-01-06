@@ -55,7 +55,6 @@ const getCachedQueueStats = unstable_cache(
     const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
 
     const dateOptions = {
-      dateField: 'created_on' as const,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
     };
