@@ -46,7 +46,7 @@ export function ThroughputChart({ data, isLoading }: ThroughputChartProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Throughput (Last Hour)</CardTitle>
+        <CardTitle>Throughput</CardTitle>
       </CardHeader>
       <CardContent>
         {chartData.length === 0 ? (
