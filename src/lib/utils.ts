@@ -19,3 +19,16 @@ export function formatEstimate(minutes: number): string {
   if (minutes < 1440) return `~${(minutes / 60).toFixed(1)}h`;
   return `~${(minutes / 1440).toFixed(1)}d`;
 }
+
+export function getTimeRangeLabel(startDate?: Date | null, endDate?: Date | null): string {
+  if (!startDate || !endDate) return "all time";
+
+  const diffMs = endDate.getTime() - startDate.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+
+  if (diffHours <= 1) return "last hour";
+  if (diffHours <= 24) return "last 24 hours";
+  if (diffHours <= 168) return "last 7 days";
+  if (diffHours <= 720) return "last 30 days";
+  return "selected time range";
+}

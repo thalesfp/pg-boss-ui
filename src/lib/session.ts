@@ -6,6 +6,7 @@ import {
   createDecipheriv,
   scryptSync,
 } from "crypto";
+import type { SSLMode } from "./db/types";
 
 export interface SessionData {
   connectionId: string;
@@ -13,6 +14,7 @@ export interface SessionData {
   schema: string;
   allowSelfSignedCert?: boolean;
   caCertificate?: string;
+  sslMode?: SSLMode;
 }
 
 const ALGORITHM = "aes-256-gcm";

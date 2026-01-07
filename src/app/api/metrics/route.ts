@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
-  const { connectionString, schema, allowSelfSignedCert, caCertificate } = result.session;
+  const { connectionString, schema, allowSelfSignedCert, caCertificate, sslMode } = result.session;
 
   try {
     const queueNameParam = searchParams.get("queueName");
@@ -23,8 +23,8 @@ export async function GET(request: NextRequest) {
       searchParams.get("granularity") || "minute"
     );
 
-    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate, sslMode);
+    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate, sslMode);
     const options = { queueName, startDate, endDate };
 
     const [metrics, timeSeries] = await Promise.all([

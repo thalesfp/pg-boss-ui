@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { getDashboardData } from "@/lib/data/stats";
 import { getMetricsData } from "@/lib/data/metrics";
 import { calculatePendingJobs, calculateThroughputPerMinute } from "@/lib/domain/metrics";
+import { validateDate } from "@/lib/db/validation";
 import { StatsCards } from "@/components/dashboard/stats-cards";
 import { ThroughputChart } from "@/components/dashboard/throughput-chart";
 import { QueueHealth } from "@/components/dashboard/queue-health";
@@ -57,8 +58,8 @@ async function DashboardContent({ searchParams }: DashboardPageProps) {
 
   // Parse date filters from URL
   const isAllTime = params.range === "all";
-  const startDate = !isAllTime && params.startDate ? new Date(params.startDate) : undefined;
-  const endDate = !isAllTime && params.endDate ? new Date(params.endDate) : undefined;
+  const startDate = !isAllTime ? validateDate(params.startDate || null) : undefined;
+  const endDate = !isAllTime ? validateDate(params.endDate || null) : undefined;
 
   // Fetch data in parallel
   const [dashboardData, metricsData] = await Promise.all([
@@ -91,10 +92,12 @@ async function DashboardContent({ searchParams }: DashboardPageProps) {
         metrics={speedMetrics}
         pendingJobs={pendingJobs}
         throughputPerMinute={throughputPerMinute}
+        startDate={startDate}
+        endDate={endDate}
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <ThroughputChart data={throughput} />
+        <ThroughputChart data={throughput} startDate={startDate} endDate={endDate} />
         <SpeedMetricsChart data={speedTimeSeries} />
       </div>
 

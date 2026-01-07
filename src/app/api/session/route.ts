@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { setSession, getSession, clearSession } from "@/lib/session";
 import { validateSchema } from "@/lib/db/validation";
 import { poolManager } from "@/lib/db/pool-manager";
+import type { SSLMode } from "@/lib/db/types";
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,12 +10,13 @@ export async function POST(request: NextRequest) {
     const oldSession = await getSession();
 
     const body = await request.json();
-    const { connectionId, connectionString, schema = "pgboss", allowSelfSignedCert, caCertificate } = body as {
+    const { connectionId, connectionString, schema = "pgboss", allowSelfSignedCert, caCertificate, sslMode } = body as {
       connectionId: string;
       connectionString: string;
       schema?: string;
       allowSelfSignedCert?: boolean;
       caCertificate?: string;
+      sslMode?: SSLMode;
     };
 
     if (!connectionId || !connectionString) {
@@ -33,11 +35,26 @@ export async function POST(request: NextRequest) {
       schema: validatedSchema,
       allowSelfSignedCert,
       caCertificate,
+      sslMode,
     });
 
-    // Close old pool if switching to a different connection
-    if (oldSession?.connectionString && oldSession.connectionString !== connectionString) {
-      await poolManager.closePool(oldSession.connectionString);
+    // Close old pool if switching connections or changing SSL options
+    const shouldCloseOldPool = oldSession && (
+      oldSession.connectionString !== connectionString ||
+      oldSession.allowSelfSignedCert !== allowSelfSignedCert ||
+      oldSession.caCertificate !== caCertificate ||
+      oldSession.sslMode !== sslMode
+    );
+
+    if (shouldCloseOldPool) {
+      await poolManager.closePool(
+        oldSession.connectionString,
+        {
+          allowSelfSignedCert: oldSession.allowSelfSignedCert,
+          caCertificate: oldSession.caCertificate,
+          sslMode: oldSession.sslMode,
+        }
+      );
     }
 
     return NextResponse.json({ success: true });
@@ -85,7 +102,14 @@ export async function DELETE() {
 
     // Close the pool for this connection if it exists
     if (session?.connectionString) {
-      await poolManager.closePool(session.connectionString);
+      await poolManager.closePool(
+        session.connectionString,
+        {
+          allowSelfSignedCert: session.allowSelfSignedCert,
+          caCertificate: session.caCertificate,
+          sslMode: session.sslMode,
+        }
+      );
     }
 
     return NextResponse.json({ success: true });

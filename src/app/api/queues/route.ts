@@ -10,11 +10,11 @@ export async function GET(request: NextRequest) {
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
-  const { connectionString, schema, allowSelfSignedCert, caCertificate } = result.session;
+  const { connectionString, schema, allowSelfSignedCert, caCertificate, sslMode } = result.session;
 
   try {
-    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const { mapper, capabilities } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate, sslMode);
+    const { mapper, capabilities } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate, sslMode);
     const [queues, stats] = await Promise.all([
       getQueues(pool, schema, capabilities),
       getQueueStats(pool, mapper, schema),

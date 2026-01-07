@@ -41,54 +41,59 @@ echo ""
 echo -e "${YELLOW}Creating user '$DB_USER' with access to schema '$SCHEMA_NAME' in database '$DB_NAME'...${NC}"
 echo ""
 
-# Create SQL commands
-SQL_COMMANDS=$(cat <<EOF
+# Execute SQL commands using psql variables (prevents SQL injection)
+if PGPASSWORD=$ADMIN_PASSWORD psql -h "$DB_HOST" -p "$DB_PORT" -U "$ADMIN_USER" -d "$DB_NAME" \
+  -v username="$DB_USER" \
+  -v password="$DB_PASSWORD" \
+  -v schema="$SCHEMA_NAME" \
+  -v dbname="$DB_NAME" \
+  <<'EOF' 2>/dev/null
 -- Create user
-CREATE USER $DB_USER WITH PASSWORD '$DB_PASSWORD';
+CREATE USER :"username" WITH PASSWORD :'password';
 
 -- Grant usage on the pg-boss schema
-GRANT USAGE ON SCHEMA $SCHEMA_NAME TO $DB_USER;
+GRANT USAGE ON SCHEMA :"schema" TO :"username";
 
 -- Grant permissions on all existing tables
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA $SCHEMA_NAME TO $DB_USER;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA :"schema" TO :"username";
 
 -- Grant permissions on all sequences (needed for ID generation)
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA $SCHEMA_NAME TO $DB_USER;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA :"schema" TO :"username";
 
 -- Grant permissions on all functions (pg-boss may use stored procedures)
-GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA $SCHEMA_NAME TO $DB_USER;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA :"schema" TO :"username";
 
 -- Grant permissions on future tables and sequences
-ALTER DEFAULT PRIVILEGES IN SCHEMA $SCHEMA_NAME
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO $DB_USER;
+ALTER DEFAULT PRIVILEGES IN SCHEMA :"schema"
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"username";
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA $SCHEMA_NAME
-  GRANT USAGE, SELECT ON SEQUENCES TO $DB_USER;
+ALTER DEFAULT PRIVILEGES IN SCHEMA :"schema"
+  GRANT USAGE, SELECT ON SEQUENCES TO :"username";
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA $SCHEMA_NAME
-  GRANT EXECUTE ON FUNCTIONS TO $DB_USER;
+ALTER DEFAULT PRIVILEGES IN SCHEMA :"schema"
+  GRANT EXECUTE ON FUNCTIONS TO :"username";
 
 -- Restrict access to only pg-boss schema (make it exclusive)
-REVOKE ALL ON SCHEMA public FROM $DB_USER;
-REVOKE CREATE ON SCHEMA public FROM $DB_USER;
+REVOKE ALL ON SCHEMA public FROM :"username";
+REVOKE CREATE ON SCHEMA public FROM :"username";
 
 -- Grant database connection
-GRANT CONNECT ON DATABASE $DB_NAME TO $DB_USER;
+GRANT CONNECT ON DATABASE :"dbname" TO :"username";
 EOF
-)
-
-# Execute SQL commands
-if PGPASSWORD=$ADMIN_PASSWORD psql -h "$DB_HOST" -p "$DB_PORT" -U "$ADMIN_USER" -d "$DB_NAME" -c "$SQL_COMMANDS" 2>/dev/null; then
+then
     echo -e "${GREEN}✓ User '$DB_USER' created successfully!${NC}"
     echo ""
-    echo "Connection string:"
-    echo -e "${GREEN}postgresql://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?schema=$SCHEMA_NAME${NC}"
+    echo "Connection string (contains password, handle with care):"
+    echo -e "${YELLOW}postgresql://$DB_USER:[PASSWORD]@$DB_HOST:$DB_PORT/$DB_NAME?schema=$SCHEMA_NAME${NC}"
     echo ""
+    read -p "Do you want to reveal the full connection string? (y/N): " SHOW_PASSWORD
+    if [[ "$SHOW_PASSWORD" =~ ^[Yy]$ ]]; then
+        echo ""
+        echo -e "${GREEN}postgresql://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?schema=$SCHEMA_NAME${NC}"
+        echo ""
+    fi
     echo "You can now use this connection string in pg-boss-ui."
 else
     echo -e "${RED}✗ Failed to create user. Please check your PostgreSQL admin credentials.${NC}"
-    echo ""
-    echo "You can run the SQL commands manually:"
-    echo "$SQL_COMMANDS"
     exit 1
 fi

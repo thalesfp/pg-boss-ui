@@ -11,15 +11,15 @@ export async function GET(request: NextRequest) {
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
-  const { connectionString, schema, allowSelfSignedCert, caCertificate } = result.session;
+  const { connectionString, schema, allowSelfSignedCert, caCertificate, sslMode } = result.session;
 
   try {
     const isAllTime = searchParams.get("range") === "all";
     const startDate = isAllTime ? undefined : validateDate(searchParams.get("startDate"));
     const endDate = isAllTime ? undefined : validateDate(searchParams.get("endDate"));
 
-    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate, sslMode);
+    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate, sslMode);
     const dateOptions = { startDate, endDate };
     const [stats, throughput] = await Promise.all([
       getDashboardStats(pool, mapper, schema, dateOptions),

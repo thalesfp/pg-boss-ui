@@ -10,13 +10,15 @@ import {
 } from "@/components/ui/tooltip";
 import { Clock, Timer, Gauge, TrendingUp } from "lucide-react";
 import type { SpeedMetrics, PercentileMetrics } from "@/lib/db/types";
-import { formatDuration, formatEstimate } from "@/lib/utils";
+import { formatDuration, formatEstimate, getTimeRangeLabel } from "@/lib/utils";
 
 interface SpeedMetricsCardsProps {
   metrics?: SpeedMetrics;
   isLoading?: boolean;
   pendingJobs?: number;
   throughputPerMinute?: number;
+  startDate?: Date | null;
+  endDate?: Date | null;
 }
 
 function MetricTooltip({ data }: { data: PercentileMetrics }) {
@@ -58,12 +60,23 @@ function MetricTooltip({ data }: { data: PercentileMetrics }) {
   );
 }
 
-function EstimateTooltip({ pendingJobs, throughputPerMinute }: { pendingJobs: number; throughputPerMinute: number }) {
+function EstimateTooltip({
+  pendingJobs,
+  throughputPerMinute,
+  startDate,
+  endDate
+}: {
+  pendingJobs: number;
+  throughputPerMinute: number;
+  startDate?: Date | null;
+  endDate?: Date | null;
+}) {
   if (throughputPerMinute <= 0) {
     return <span className="text-muted-foreground">No recent job completions to estimate</span>;
   }
 
   const jobsPerHour = throughputPerMinute * 60;
+  const timeRangeLabel = getTimeRangeLabel(startDate, endDate);
 
   return (
     <div className="space-y-1 text-sm">
@@ -80,7 +93,7 @@ function EstimateTooltip({ pendingJobs, throughputPerMinute }: { pendingJobs: nu
         <span className="font-mono">{jobsPerHour.toFixed(0)}/hour</span>
       </div>
       <div className="border-t pt-1 mt-1 text-muted-foreground">
-        Based on last hour&apos;s throughput
+        Based on {timeRangeLabel}&apos;s throughput
       </div>
     </div>
   );
@@ -91,6 +104,8 @@ export function SpeedMetricsCards({
   isLoading,
   pendingJobs = 0,
   throughputPerMinute = 0,
+  startDate,
+  endDate,
 }: SpeedMetricsCardsProps) {
   const estimatedMinutes = throughputPerMinute > 0 ? pendingJobs / throughputPerMinute : Infinity;
   const hasEstimateData = throughputPerMinute > 0;
@@ -222,7 +237,12 @@ export function SpeedMetricsCards({
             </Card>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="w-48">
-            <EstimateTooltip pendingJobs={pendingJobs} throughputPerMinute={throughputPerMinute} />
+            <EstimateTooltip
+              pendingJobs={pendingJobs}
+              throughputPerMinute={throughputPerMinute}
+              startDate={startDate}
+              endDate={endDate}
+            />
           </TooltipContent>
         </Tooltip>
       </div>

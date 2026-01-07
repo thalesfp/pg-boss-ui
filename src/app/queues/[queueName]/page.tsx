@@ -12,6 +12,7 @@ import { getSession } from "@/lib/session";
 import { getQueuesData, getQueueStatsData } from "@/lib/data/queues";
 import { getMetricsData } from "@/lib/data/metrics";
 import { calculateThroughputFromTimeSeries } from "@/lib/domain/metrics";
+import { validateDate } from "@/lib/db/validation";
 import { ArrowLeft, Database, Settings } from "lucide-react";
 
 interface QueueDetailPageProps {
@@ -63,8 +64,8 @@ async function QueueDetailContent({ params, searchParams }: QueueDetailPageProps
   }
 
   // Parse date filters from URL
-  const startDate = filters.startDate ? new Date(filters.startDate) : undefined;
-  const endDate = filters.endDate ? new Date(filters.endDate) : undefined;
+  const startDate = validateDate(filters.startDate || null);
+  const endDate = validateDate(filters.endDate || null);
 
   // Fetch data in parallel
   const [queues, queueStats, metricsData] = await Promise.all([
@@ -112,6 +113,8 @@ async function QueueDetailContent({ params, searchParams }: QueueDetailPageProps
         metrics={speedMetrics}
         pendingJobs={pendingJobs}
         throughputPerMinute={throughputPerMinute}
+        startDate={startDate}
+        endDate={endDate}
       />
 
       <JobsTableWrapper queueName={decodedQueueName} />

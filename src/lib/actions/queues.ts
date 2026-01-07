@@ -31,7 +31,7 @@ export async function purgeQueue(
 
     const validatedQueueName = validateQueueName(queueName);
     const validatedState = state ? validateJobState(state) : undefined;
-    const pool = poolManager.getPool(session.connectionString, session.allowSelfSignedCert, session.caCertificate);
+    const pool = poolManager.getPool(session.connectionString, session.allowSelfSignedCert, session.caCertificate, session.sslMode);
 
     const deleted = await dbPurgeQueue(
       pool,

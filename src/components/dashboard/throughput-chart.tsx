@@ -15,21 +15,25 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import { useTheme } from "next-themes";
 import type { ThroughputDataPoint } from "@/lib/db/types";
+import { getTimeRangeLabel } from "@/lib/utils";
 
 interface ThroughputChartProps {
   data?: ThroughputDataPoint[];
   isLoading?: boolean;
+  startDate?: Date | null;
+  endDate?: Date | null;
 }
 
-export function ThroughputChart({ data, isLoading }: ThroughputChartProps) {
+export function ThroughputChart({ data, isLoading, startDate, endDate }: ThroughputChartProps) {
   const { theme } = useTheme();
   const tickColor = theme === "dark" ? "hsl(0, 0%, 70.8%)" : "hsl(0, 0%, 55.6%)";
+  const timeRangeLabel = getTimeRangeLabel(startDate, endDate);
 
   if (isLoading) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Throughput</CardTitle>
+          <CardTitle>Throughput ({timeRangeLabel})</CardTitle>
         </CardHeader>
         <CardContent>
           <Skeleton className="h-[300px] w-full" />
@@ -46,7 +50,7 @@ export function ThroughputChart({ data, isLoading }: ThroughputChartProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Throughput</CardTitle>
+        <CardTitle>Throughput ({timeRangeLabel})</CardTitle>
       </CardHeader>
       <CardContent>
         {chartData.length === 0 ? (
