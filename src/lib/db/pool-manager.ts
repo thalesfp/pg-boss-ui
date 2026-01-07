@@ -1,10 +1,12 @@
 import { Pool, PoolConfig } from "pg";
 import { createHash } from "crypto";
 import { ColumnMapper, type ColumnCase } from "./column-mapper";
+import type { SSLMode } from "./types";
 
 interface SslOptions {
   allowSelfSignedCert?: boolean;
   caCertificate?: string;
+  sslMode?: SSLMode;
 }
 
 export interface SchemaCapabilities {
@@ -28,24 +30,65 @@ class PoolManager {
       : sslOptions?.allowSelfSignedCert
         ? "selfsigned"
         : "default";
-    return `${connectionString}:ssl=${sslKey}`;
+    const mode = sslOptions?.sslMode || "default";
+    return `${connectionString}:ssl=${sslKey}:mode=${mode}`;
   }
 
   private getSslConfig(sslOptions?: SslOptions): PoolConfig["ssl"] {
-    if (sslOptions?.caCertificate) {
-      // Use provided CA certificate for verification
-      return { ca: sslOptions.caCertificate };
+    // Handle explicit SSL mode disable
+    if (sslOptions?.sslMode === "disable") {
+      return false;
     }
+
+    // If SSL mode is set, configure SSL based on the mode
+    if (sslOptions?.sslMode) {
+      const mode = sslOptions.sslMode;
+
+      // Base SSL config
+      const sslConfig: any = {};
+
+      // Apply CA certificate if provided
+      if (sslOptions.caCertificate) {
+        sslConfig.ca = sslOptions.caCertificate;
+      }
+
+      // Configure verification based on mode
+      switch (mode) {
+        case "require":
+          // Force SSL but don't verify certificates (unless CA is provided)
+          sslConfig.rejectUnauthorized = sslOptions.caCertificate ? true : false;
+          break;
+
+        case "verify-ca":
+          // Require SSL and verify CA
+          sslConfig.rejectUnauthorized = true;
+          break;
+
+        case "verify-full":
+          // Require SSL, verify CA, and verify hostname
+          sslConfig.rejectUnauthorized = true;
+          // Note: Default checkServerIdentity should handle hostname verification
+          break;
+      }
+
+      return sslConfig;
+    }
+
+    // Fallback to legacy behavior for backward compatibility
+    if (sslOptions?.caCertificate) {
+      return { ca: sslOptions.caCertificate, rejectUnauthorized: true };
+    }
+
     if (sslOptions?.allowSelfSignedCert) {
-      // Disable certificate verification entirely
       return { rejectUnauthorized: false, checkServerIdentity: () => undefined };
     }
-    // Use default SSL behavior
+
+    // Default: no explicit SSL configuration (let driver decide)
     return undefined;
   }
 
-  getPool(connectionString: string, allowSelfSignedCert?: boolean, caCertificate?: string): Pool {
-    const sslOptions: SslOptions = { allowSelfSignedCert, caCertificate };
+  getPool(connectionString: string, allowSelfSignedCert?: boolean, caCertificate?: string, sslMode?: SSLMode): Pool {
+    const sslOptions: SslOptions = { allowSelfSignedCert, caCertificate, sslMode };
     const poolKey = this.getPoolKey(connectionString, sslOptions);
     let metadata = this.pools.get(poolKey);
 
@@ -187,13 +230,14 @@ class PoolManager {
     connectionString: string,
     schema: string,
     allowSelfSignedCert?: boolean,
-    caCertificate?: string
+    caCertificate?: string,
+    sslMode?: SSLMode
   ): Promise<{ mapper: ColumnMapper; capabilities: SchemaCapabilities }> {
-    const sslOptions: SslOptions = { allowSelfSignedCert, caCertificate };
+    const sslOptions: SslOptions = { allowSelfSignedCert, caCertificate, sslMode };
     const poolKey = this.getPoolKey(connectionString, sslOptions);
 
     // Get or create pool
-    const pool = this.getPool(connectionString, allowSelfSignedCert, caCertificate);
+    const pool = this.getPool(connectionString, allowSelfSignedCert, caCertificate, sslMode);
     const metadata = this.pools.get(poolKey)!;
 
     // Detect version and capabilities if not already cached
@@ -218,9 +262,10 @@ class PoolManager {
     connectionString: string,
     schema: string = "pgboss",
     allowSelfSignedCert?: boolean,
-    caCertificate?: string
+    caCertificate?: string,
+    sslMode?: SSLMode
   ): Promise<{ success: boolean; error?: string }> {
-    const sslOptions: SslOptions = { allowSelfSignedCert, caCertificate };
+    const sslOptions: SslOptions = { allowSelfSignedCert, caCertificate, sslMode };
     const pool = new Pool({
       connectionString,
       max: 1,
@@ -257,8 +302,7 @@ class PoolManager {
     }
   }
 
-  async closePool(connectionString: string, allowSelfSignedCert?: boolean, caCertificate?: string): Promise<void> {
-    const sslOptions: SslOptions = { allowSelfSignedCert, caCertificate };
+  async closePool(connectionString: string, sslOptions?: SslOptions): Promise<void> {
     const poolKey = this.getPoolKey(connectionString, sslOptions);
     const metadata = this.pools.get(poolKey);
     if (metadata) {

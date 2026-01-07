@@ -36,6 +36,9 @@ import {
 import { Plus, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { useDatabaseStore, type DatabaseConnection } from "@/lib/stores/database-store";
 import { toast } from "sonner";
+import type { SSLMode } from "@/lib/db/types";
+
+const SSL_MODES = ["disable", "require", "verify-ca", "verify-full"] as const;
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -47,7 +50,7 @@ const formSchema = z.object({
   database: z.string().optional(),
   user: z.string().optional(),
   password: z.string().optional(),
-  sslMode: z.enum(["disable", "require", "prefer", "verify-ca", "verify-full"]).optional(),
+  sslMode: z.enum(SSL_MODES).optional(),
   // SSL options
   allowSelfSignedCert: z.boolean().optional(),
   caCertificate: z.string().optional(),
@@ -60,10 +63,18 @@ function buildConnectionString(
   port: string,
   database: string,
   user: string,
-  password: string
+  password: string,
+  sslMode?: string
 ): string {
   const encodedPassword = encodeURIComponent(password);
-  return `postgresql://${user}:${encodedPassword}@${host}:${port}/${database}`;
+  let connStr = `postgresql://${user}:${encodedPassword}@${host}:${port}/${database}`;
+
+  // Add sslMode as query parameter if provided
+  if (sslMode) {
+    connStr += `?sslmode=${sslMode}`;
+  }
+
+  return connStr;
 }
 
 type FormValues = z.infer<typeof formSchema>;
@@ -94,7 +105,7 @@ export function DatabaseForm({ connection, onSuccess }: DatabaseFormProps) {
       database: "",
       user: "",
       password: "",
-      sslMode: "prefer",
+      sslMode: connection?.sslMode || undefined,
       allowSelfSignedCert: connection?.allowSelfSignedCert || false,
       caCertificate: connection?.caCertificate || "",
       schema: connection?.schema || "pgboss",
@@ -133,7 +144,8 @@ export function DatabaseForm({ connection, onSuccess }: DatabaseFormProps) {
         return null;
       }
 
-      return buildConnectionString(host, port, database, user, password);
+      const sslMode = form.getValues("sslMode");
+      return buildConnectionString(host, port, database, user, password, sslMode);
     }
   };
 
@@ -142,6 +154,7 @@ export function DatabaseForm({ connection, onSuccess }: DatabaseFormProps) {
     const schema = form.getValues("schema") || "pgboss";
     const allowSelfSignedCert = form.getValues("allowSelfSignedCert") || false;
     const caCertificate = form.getValues("caCertificate") || undefined;
+    const sslMode = form.getValues("sslMode");
     if (!connectionString) {
       return;
     }
@@ -153,7 +166,7 @@ export function DatabaseForm({ connection, onSuccess }: DatabaseFormProps) {
       const res = await fetch("/api/databases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectionString, schema, allowSelfSignedCert, caCertificate }),
+        body: JSON.stringify({ connectionString, schema, allowSelfSignedCert, caCertificate, sslMode }),
       });
 
       const result = await res.json();
@@ -184,6 +197,7 @@ export function DatabaseForm({ connection, onSuccess }: DatabaseFormProps) {
       schema: values.schema,
       allowSelfSignedCert: values.allowSelfSignedCert,
       caCertificate: values.caCertificate,
+      sslMode: values.sslMode,
     };
 
     try {
@@ -349,20 +363,29 @@ export function DatabaseForm({ connection, onSuccess }: DatabaseFormProps) {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>SSL Mode</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select
+                        onValueChange={(value) => field.onChange(value === "auto" ? undefined : value)}
+                        defaultValue={field.value || "auto"}
+                      >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select SSL mode" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
+                          <SelectItem value="auto">Auto (use connection string)</SelectItem>
                           <SelectItem value="disable">Disable</SelectItem>
-                          <SelectItem value="prefer">Prefer</SelectItem>
                           <SelectItem value="require">Require</SelectItem>
                           <SelectItem value="verify-ca">Verify CA</SelectItem>
                           <SelectItem value="verify-full">Verify Full</SelectItem>
                         </SelectContent>
                       </Select>
+                      <FormDescription>
+                        Choose SSL/TLS mode. "Disable" for no SSL, "Require" to force SSL without
+                        certificate verification, "Verify CA" to verify server certificate, or
+                        "Verify Full" to also verify hostname.
+                        Note: "Prefer" mode is not supported by the database driver.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

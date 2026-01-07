@@ -2,10 +2,22 @@ import { create } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
 import { mutate } from "swr";
 import { encryptData, decryptData } from "../crypto";
+import type { SSLMode } from "../db/types";
 
 // Invalidate all SWR cache to force refetch with new connection
 async function invalidateAllCache(): Promise<void> {
   await mutate(() => true, undefined, { revalidate: true });
+}
+
+// Migrate legacy "prefer" mode to "require" for backward compatibility
+function migrateConnection(conn: DatabaseConnection): DatabaseConnection {
+  if ((conn.sslMode as any) === "prefer") {
+    console.warn(
+      `Connection "${conn.name}": "prefer" SSL mode is no longer supported. Migrating to "require".`
+    );
+    return { ...conn, sslMode: "require" };
+  }
+  return conn;
 }
 
 export interface DatabaseConnection {
@@ -15,6 +27,7 @@ export interface DatabaseConnection {
   schema: string;
   allowSelfSignedCert?: boolean;
   caCertificate?: string;
+  sslMode?: SSLMode;
 }
 
 interface DatabaseStore {
@@ -39,6 +52,7 @@ async function updateSession(connection: DatabaseConnection | null): Promise<voi
         schema: connection.schema,
         allowSelfSignedCert: connection.allowSelfSignedCert,
         caCertificate: connection.caCertificate,
+        sslMode: connection.sslMode,
       }),
     });
     if (!res.ok) {
@@ -86,7 +100,7 @@ export const useDatabaseStore = create<DatabaseStore>()(
 
       addConnection: async (connection) => {
         const id = crypto.randomUUID();
-        const newConnection = { ...connection, id };
+        const newConnection = migrateConnection({ ...connection, id });
 
         set((state) => ({
           connections: [...state.connections, newConnection],
@@ -200,9 +214,8 @@ export const useDatabaseStore = create<DatabaseStore>()(
 
       getSelectedConnection: () => {
         const state = get();
-        return (
-          state.connections.find((conn) => conn.id === state.selectedId) || null
-        );
+        const conn = state.connections.find((conn) => conn.id === state.selectedId);
+        return conn ? migrateConnection(conn) : null;
       },
 
       syncSession: async () => {
@@ -213,6 +226,13 @@ export const useDatabaseStore = create<DatabaseStore>()(
     {
       name: STORAGE_NAME,
       storage: createJSONStorage(() => encryptedStorage),
+      migrate: (persistedState: any, version: number) => {
+        // Migrate legacy "prefer" SSL mode connections
+        if (persistedState?.connections) {
+          persistedState.connections = persistedState.connections.map(migrateConnection);
+        }
+        return persistedState;
+      },
     }
   )
 );

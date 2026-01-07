@@ -9,9 +9,9 @@ import type { QueueStats } from "@/lib/db/types";
  * Cached for 5 seconds with manual revalidation via tags
  */
 const getCachedQueuesWithStats = unstable_cache(
-  async (connectionString: string, schema: string, allowSelfSignedCert?: boolean, caCertificate?: string): Promise<QueueWithStats[]> => {
-    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const { capabilities } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+  async (connectionString: string, schema: string, allowSelfSignedCert?: boolean, caCertificate?: string, sslMode?: import("../db/types").SSLMode): Promise<QueueWithStats[]> => {
+    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate, sslMode);
+    const { capabilities } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate, sslMode);
     return getQueuesWithStats(pool, schema, capabilities);
   },
   ["queues-with-stats"],
@@ -34,7 +34,7 @@ export async function getQueuesData(): Promise<QueueWithStats[]> {
     throw new Error("No active connection");
   }
 
-  return getCachedQueuesWithStats(session.connectionString, session.schema, session.allowSelfSignedCert, session.caCertificate);
+  return getCachedQueuesWithStats(session.connectionString, session.schema, session.allowSelfSignedCert, session.caCertificate, session.sslMode);
 }
 
 /**
@@ -49,10 +49,11 @@ const getCachedQueueStats = unstable_cache(
     startDate?: string,
     endDate?: string,
     allowSelfSignedCert?: boolean,
-    caCertificate?: string
+    caCertificate?: string,
+    sslMode?: import("../db/types").SSLMode
   ): Promise<QueueStats | null> => {
-    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate, sslMode);
+    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate, sslMode);
 
     const dateOptions = {
       startDate: startDate ? new Date(startDate) : undefined,
@@ -95,6 +96,7 @@ export async function getQueueStatsData(
     startDate?.toISOString(),
     endDate?.toISOString(),
     session.allowSelfSignedCert,
-    session.caCertificate
+    session.caCertificate,
+    session.sslMode
   );
 }

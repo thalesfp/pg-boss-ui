@@ -20,10 +20,11 @@ const getCachedDashboardStats = unstable_cache(
     startDate?: string,
     endDate?: string,
     allowSelfSignedCert?: boolean,
-    caCertificate?: string
+    caCertificate?: string,
+    sslMode?: import("../db/types").SSLMode
   ): Promise<DashboardData> => {
-    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate, sslMode);
+    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate, sslMode);
 
     const dateOptions = {
       startDate: startDate ? new Date(startDate) : undefined,
@@ -67,6 +68,7 @@ export async function getDashboardData(
     startDate?.toISOString(),
     endDate?.toISOString(),
     session.allowSelfSignedCert,
-    session.caCertificate
+    session.caCertificate,
+    session.sslMode
   );
 }

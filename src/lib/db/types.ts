@@ -1,3 +1,12 @@
+/**
+ * PostgreSQL SSL connection modes
+ * Note: "prefer" mode is not supported because node-postgres does not
+ * support automatic SSL fallback. Use "require" for SSL or "disable" for non-SSL.
+ * @see https://www.postgresql.org/docs/current/libpq-ssl.html
+ * @see https://github.com/brianc/node-postgres/issues/2775
+ */
+export type SSLMode = "disable" | "require" | "verify-ca" | "verify-full";
+
 export type JobState =
   | "created"
   | "retry"

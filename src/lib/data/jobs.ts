@@ -32,10 +32,11 @@ const getCachedJobs = unstable_cache(
     schema: string,
     options: GetJobsOptions,
     allowSelfSignedCert?: boolean,
-    caCertificate?: string
+    caCertificate?: string,
+    sslMode?: import("../db/types").SSLMode
   ): Promise<JobsData> => {
-    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate, sslMode);
+    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate, sslMode);
     return getJobs(pool, mapper, schema, options);
   },
   ["jobs"],
@@ -58,7 +59,7 @@ export async function getJobsData(options: GetJobsOptions = {}): Promise<JobsDat
     throw new Error("No active connection");
   }
 
-  return getCachedJobs(session.connectionString, session.schema, options, session.allowSelfSignedCert, session.caCertificate);
+  return getCachedJobs(session.connectionString, session.schema, options, session.allowSelfSignedCert, session.caCertificate, session.sslMode);
 }
 
 /**
@@ -71,10 +72,11 @@ const getCachedJob = unstable_cache(
     schema: string,
     jobId: string,
     allowSelfSignedCert?: boolean,
-    caCertificate?: string
+    caCertificate?: string,
+    sslMode?: import("../db/types").SSLMode
   ): Promise<Job | null> => {
-    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate);
-    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate);
+    const pool = poolManager.getPool(connectionString, allowSelfSignedCert, caCertificate, sslMode);
+    const { mapper } = await poolManager.getMapper(connectionString, schema, allowSelfSignedCert, caCertificate, sslMode);
     return getJob(pool, mapper, jobId, schema);
   },
   ["job-detail"],
@@ -97,5 +99,5 @@ export async function getJobData(jobId: string): Promise<Job | null> {
     throw new Error("No active connection");
   }
 
-  return getCachedJob(session.connectionString, session.schema, jobId, session.allowSelfSignedCert, session.caCertificate);
+  return getCachedJob(session.connectionString, session.schema, jobId, session.allowSelfSignedCert, session.caCertificate, session.sslMode);
 }
