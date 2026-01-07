@@ -23,6 +23,7 @@ interface PoolMetadata {
 
 class PoolManager {
   private pools: Map<string, PoolMetadata> = new Map();
+  private detectionPromises: Map<string, Promise<void>> = new Map();
 
   private getPoolKey(connectionString: string, sslOptions?: SslOptions): string {
     const sslKey = sslOptions?.caCertificate
@@ -133,7 +134,9 @@ class PoolManager {
       }
 
       const version = parseInt(result.rows[0].version, 10);
-      console.log(`Detected pg-boss schema version: ${version} (${version >= 23 ? 'snake_case' : 'camelCase'})`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`Detected pg-boss schema version: ${version} (${version >= 23 ? 'snake_case' : 'camelCase'})`);
+      }
       return version;
     } catch (error) {
       // Version table doesn't exist, try detecting from job table
@@ -209,9 +212,11 @@ class PoolManager {
         hasScheduleTable: scheduleCheck.rows[0].exists,
       };
 
-      console.log(
-        `Detected pg-boss schema capabilities: queue table=${capabilities.hasQueueTable}, schedule table=${capabilities.hasScheduleTable}`
-      );
+      if (process.env.NODE_ENV === 'development') {
+        console.log(
+          `Detected pg-boss schema capabilities: queue table=${capabilities.hasQueueTable}, schedule table=${capabilities.hasScheduleTable}`
+        );
+      }
 
       return capabilities;
     } catch (error) {
@@ -242,14 +247,39 @@ class PoolManager {
 
     // Detect version and capabilities if not already cached
     if (metadata.schemaVersion === null || metadata.capabilities === null) {
-      const [schemaVersion, capabilities] = await Promise.all([
-        this.detectSchemaVersion(pool, schema),
-        this.detectSchemaCapabilities(pool, schema),
-      ]);
+      const detectionKey = poolKey; // Use same key for detection lock
 
-      metadata.schemaVersion = schemaVersion;
-      metadata.columnCase = this.getColumnCase(schemaVersion);
-      metadata.capabilities = capabilities;
+      // Check if detection is already in progress
+      let detectionPromise = this.detectionPromises.get(detectionKey);
+
+      if (!detectionPromise) {
+        // We're the first caller - run detection
+        detectionPromise = (async () => {
+          try {
+            const [schemaVersion, capabilities] = await Promise.all([
+              this.detectSchemaVersion(pool, schema),
+              this.detectSchemaCapabilities(pool, schema),
+            ]);
+
+            metadata.schemaVersion = schemaVersion;
+            metadata.columnCase = this.getColumnCase(schemaVersion);
+            metadata.capabilities = capabilities;
+          } finally {
+            // Clean up the promise when done
+            this.detectionPromises.delete(detectionKey);
+          }
+        })();
+
+        this.detectionPromises.set(detectionKey, detectionPromise);
+      }
+
+      // Wait for detection to complete (either ours or another caller's)
+      await detectionPromise;
+    }
+
+    // After detection, capabilities should always be set
+    if (!metadata.capabilities) {
+      throw new Error('Schema capabilities detection failed');
     }
 
     return {
