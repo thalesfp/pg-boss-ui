@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
 import { mutate } from "swr";
-import { encryptData, decryptData } from "../crypto";
+import { encryptDataWithPassword, decryptDataWithPassword } from "../crypto";
 import type { SSLMode } from "../db/types";
 
 // Invalidate all SWR cache to force refetch with new connection
@@ -18,6 +18,18 @@ function migrateConnection(conn: DatabaseConnection): DatabaseConnection {
     return { ...conn, sslMode: "require" };
   }
   return conn;
+}
+
+// Password-based encryption storage
+// NOTE: Password must be provided before storage operations
+let currentPassword: string | null = null;
+
+export function setStoragePassword(password: string): void {
+  currentPassword = password;
+}
+
+export function clearStoragePassword(): void {
+  currentPassword = null;
 }
 
 export interface DatabaseConnection {
@@ -69,22 +81,30 @@ async function updateSession(connection: DatabaseConnection | null): Promise<voi
 
 const STORAGE_NAME = "pg-boss-ui-databases";
 
-const encryptedStorage: StateStorage = {
+const passwordEncryptedStorage: StateStorage = {
   getItem: async (name: string): Promise<string | null> => {
+    if (!currentPassword) {
+      throw new Error("Password not set for storage decryption");
+    }
+
     const encrypted = localStorage.getItem(name);
     if (!encrypted) return null;
 
     try {
-      const decrypted = await decryptData(encrypted);
+      const decrypted = await decryptDataWithPassword(encrypted, currentPassword);
       return decrypted;
-    } catch {
-      // Decryption failed (key changed or data corrupted), clear storage
-      localStorage.removeItem(name);
-      return null;
+    } catch (error) {
+      console.error("Decryption failed:", error);
+      // Wrong password or corrupted data
+      throw new Error("Failed to decrypt data. Wrong password?");
     }
   },
   setItem: async (name: string, value: string): Promise<void> => {
-    const encrypted = await encryptData(value);
+    if (!currentPassword) {
+      throw new Error("Password not set for storage encryption");
+    }
+
+    const encrypted = await encryptDataWithPassword(value, currentPassword);
     localStorage.setItem(name, encrypted);
   },
   removeItem: (name: string): void => {
@@ -225,7 +245,9 @@ export const useDatabaseStore = create<DatabaseStore>()(
     }),
     {
       name: STORAGE_NAME,
-      storage: createJSONStorage(() => encryptedStorage),
+      storage: createJSONStorage(() => passwordEncryptedStorage),
+      // Skip hydration by default - will be triggered manually after password entry
+      skipHydration: true,
       migrate: (persistedState: any, version: number) => {
         // Migrate legacy "prefer" SSL mode connections
         if (persistedState?.connections) {

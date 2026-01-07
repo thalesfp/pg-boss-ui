@@ -5,6 +5,8 @@ import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { useDatabaseStore } from "@/lib/stores/database-store";
 import { toast } from "sonner";
+import { PasswordProvider } from "@/lib/contexts/password-context";
+import { PasswordGate } from "./auth/password-gate";
 
 function SessionSync() {
   const { syncSession } = useDatabaseStore();
@@ -46,8 +48,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
       enableSystem
       disableTransitionOnChange
     >
-      <SessionSync />
-      {children}
+      <PasswordProvider>
+        <PasswordGate>
+          <SessionSync />
+          {children}
+        </PasswordGate>
+      </PasswordProvider>
       <Toaster />
     </NextThemesProvider>
   );
